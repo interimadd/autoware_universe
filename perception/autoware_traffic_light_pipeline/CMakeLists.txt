@@ -83,6 +83,7 @@ install(PROGRAMS
   evaluation/scripts/evaluate_traffic_light_recognition.py
   evaluation/scripts/criteria.py
   evaluation/scripts/traffic_light_label.py
+  evaluation/scripts/run_traffic_light_test_case_evaluation.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

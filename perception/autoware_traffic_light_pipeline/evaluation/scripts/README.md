@@ -1,3 +1,51 @@
+## 1 コマンドでの実行（テストケース単位）
+
+Component Test 用のテストケースディレクトリ（t4dataset 1 件 + scenario yaml 1 件が直下に置か
+れているもの）を渡すだけで、`run_traffic_light_pipeline_evaluation` と
+`evaluate_traffic_light_recognition.py` の 2 段を通しで実行するラッパーです。
+
+```bash
+ros2 run autoware_traffic_light_pipeline run_traffic_light_test_case_evaluation.py \
+  "<テストケースディレクトリ>"
+```
+
+例:
+
+```bash
+ros2 run autoware_traffic_light_pipeline run_traffic_light_test_case_evaluation.py \
+  "/media/takahisaishikawa/Extreme SSD/work/tlr_component_test/J6Gen2_TLR_Regression/J6Gen2_TLR_Regression/Gen2_TLR_Shiojiri/TLR_UC_001530_shiojiri_gen2_sunny_01"
+```
+
+- scenario yaml（テストケースディレクトリ直下の唯一の `*.yaml`）と t4dataset（直下の唯一の
+  `<uuid>/0/input_bag` を持つディレクトリ）を自動で見つけます。
+- `--config` を省略すると、scenario の `SensorModel` から `../config/*.evaluation.yaml` を自動選
+  択します（複数該当／該当なしの場合はエラーになるので `--config` で明示してください）。
+- 結果は `result/<テストケースディレクトリ名>/<t4dataset id>/` 以下（`output_bag` /
+  `evaluation` / `info.json`）に出力されます。t4dataset id がパスに含まれるので、同じテスト
+  ケース名で別バージョンの t4dataset を回しても結果を混同しません。`info.json` に
+  scenario/config のパスや `SensorModel` 等の実行時情報も記録されます。
+- 既に同じ出力先がある場合はエラーになります。上書きするには `--force` を付けてください。
+- 終了コードは `evaluate_traffic_light_recognition.py` と同じ（0=PASS, 1=FAIL）です。
+
+### 複数テストケースの一括実行
+
+渡したディレクトリ自体がテストケース（scenario yaml 1 件 + t4dataset 1 件が直下にある）でな
+い場合は、自動的にバッチモードになります。配下を再帰的に探索してテストケースディレクトリを
+すべて検出し、1 つずつ同じ処理を実行します。
+
+```bash
+ros2 run autoware_traffic_light_pipeline run_traffic_light_test_case_evaluation.py \
+  "/media/takahisaishikawa/Extreme SSD/work/tlr_component_test/J6Gen2_TLR_Regression/J6Gen2_TLR_Regression/Gen2_TLR_Shiojiri"
+```
+
+- 1 件の失敗／エラーで全体を止めず、残りのテストケースも続けて実行します。
+- 各テストケースの結果は単体実行時と同じく `result/<テストケースディレクトリ名>/<t4dataset id>/`
+  に出力され、最後に PASS/FAIL/ERROR の一覧をまとめて表示します。
+- 全件 PASS の場合のみ終了コード 0、それ以外（FAIL または ERROR が 1 件でもある）は 1 です。
+- `--config` / `--scenario` / `--dataset` はテストケースごとに異なり得るため、バッチモードでは
+  使用できません（指定するとエラーになります）。単体のテストケースディレクトリを指定して単体
+  実行する場合のみ使ってください。
+
 # 精度評価スクリプト
 
 `run_traffic_light_pipeline_evaluation`（[../README.md](../README.md)）が書き出した bag を、
