@@ -62,6 +62,10 @@ ros2 run autoware_traffic_light_pipeline run_traffic_light_pipeline_evaluation \
   ペアリングし、相手のいないメッセージは捨てます。
 - 出力トピック名は評価用 yaml の `cameras[].output_topics`（前段）と `fusion.output_topic`
   （後段）で指定します（本番のトピック名）。
+- **注（暫定）**: `TrafficLightFusion::run()` は現在 crosswalk_estimator の処理をスキップしており、
+  後段出力は **arbiter の出力**です（`src/traffic_light_fusion/traffic_light_fusion.cpp` の
+  TEMPORARY コメント参照）。本番の `internal/traffic_signals`（multi_camera_fusion の出力）とは
+  段が 1 つ違いますが、external(V2X) 入力が無く arbiter は素通りなので内容は同一です（実測 0/1194）。
 - pass B（後段）への投入順は既定で `(stamp, camera_index)` 昇順です。本番では 2 台のカメラが
   別 Jetson で動くため、1 サイクル内でどちらの triple が multi_camera_fusion に先に着くかは
   前段のレイテンシ次第で毎サイクル変わります（x2 実測で camera5 が先: 597 サイクル中 244 =

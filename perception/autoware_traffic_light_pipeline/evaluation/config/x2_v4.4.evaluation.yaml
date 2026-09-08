@@ -75,6 +75,11 @@ recognition:
 # 化されている multi_camera_fusion.* / arbiter.* のみ
 # (config/traffic_light_fusion.param.yaml と同値)。
 fusion:
+  # シナリオの degradation_topic と同じトピック名。
+  # 注: crosswalk_estimator は現在スキップされているので（traffic_light_fusion.cpp の
+  # TEMPORARY コメント参照）、ここに書き出されるのは arbiter の出力。本番の
+  # internal/traffic_signals（multi_camera_fusion の出力）とは段が 1 つ違うが、external(V2X)
+  # 入力が無く arbiter は素通りなので内容は同一（実測 0/1194）。
   output_topic: /perception/traffic_light_recognition/internal/traffic_signals
 
   multi_camera_fusion:

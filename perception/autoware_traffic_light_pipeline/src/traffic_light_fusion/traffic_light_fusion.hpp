@@ -89,15 +89,18 @@ public:
   TrafficLightFusion(
     const TrafficLightFusionConfig & config, const autoware_map_msgs::msg::LaneletMapBin & map_msg);
 
-  // Runs one camera's frame through the three-stage chain and returns
-  // crosswalk_traffic_light_estimator's final output (production's
-  // /perception/traffic_light_recognition/traffic_signals). `camera_info.header.stamp` is also the
-  // trigger_stamp run() passes to arbitrate() (production's MultiCameraFusionNode ExactTime-syncs
-  // exactly these three inputs per camera). The only failure mode surfaced as an error() here is
-  // "no map has arrived yet" (arbiter's ArbitrationResult::output == std::nullopt); an empty map
-  // still produces a value, just empty. Intermediate signals (fusion's, arbiter's) and diagnostics
-  // (unmapped / conflicted / off-map / unregistered ids) are not part of this composition's
-  // output -- production only ever logs them as warnings -- so this class does not surface them.
+  // Runs one camera's frame through the chain and returns its output.
+  // `camera_info.header.stamp` is also the trigger_stamp run() passes to arbitrate()
+  // (production's MultiCameraFusionNode ExactTime-syncs exactly these three inputs per camera).
+  // The only failure mode surfaced as an error() here is "no map has arrived yet" (arbiter's
+  // ArbitrationResult::output == std::nullopt); an empty map still produces a value, just empty.
+  // Intermediate signals (fusion's) and diagnostics (unmapped / conflicted / off-map /
+  // unregistered ids) are not part of this composition's output -- production only ever logs them
+  // as warnings -- so this class does not surface them.
+  //
+  // TEMPORARY (2026-09-08): the crosswalk_traffic_light_estimator stage is skipped, so what is
+  // returned is the *arbiter's* output. See the note in run()'s definition
+  // (traffic_light_fusion.cpp) for why, and for how to restore it.
   tl::expected<autoware_perception_msgs::msg::TrafficLightGroupArray, std::string> run(
     const sensor_msgs::msg::CameraInfo & camera_info,
     const tier4_perception_msgs::msg::TrafficLightRoiArray & selected_rois,
