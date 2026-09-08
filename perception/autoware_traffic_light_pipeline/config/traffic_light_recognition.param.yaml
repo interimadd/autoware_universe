@@ -7,7 +7,13 @@
       nms_threshold: 0.7
 
     map_based_detector:
-      min_timestamp_offset: -0.3
+      # Deployed value, not autoware_traffic_light_map_based_detector's package default (-0.3):
+      # every x2 camera overrides it to -0.04 via
+      # edge_auto_jetson_launch/launch/traffic_light_recognition/traffic_light_recognition.launch.xml.
+      # -0.3 samples the map->camera tf 31 times instead of 5 (0.01s steps), and since
+      # get_visible_traffic_lights() accepts a light visible in any one sample and rough_roi is the
+      # bounding box over all of them, it inflates both the candidate count and the rough ROI.
+      min_timestamp_offset: -0.04
       max_timestamp_offset: 0.0
 
     classifier:

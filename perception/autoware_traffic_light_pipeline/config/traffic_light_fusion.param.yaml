@@ -1,12 +1,23 @@
 # Package defaults for the back-end (fusion) Node. `arbiter` mirrors
 # autoware_traffic_light_arbiter's own package defaults, moved under the `arbiter.` prefix.
-# multi_camera_fusion and crosswalk_estimator are not exposed as parameters: no deployment has ever
-# needed to change them from their fixed values, so declare_fusion_config() hardcodes them instead
-# (see traffic_light_fusion_node.cpp). `camera_namespaces` is deliberately not here either: which
+# crosswalk_estimator is not exposed as a parameter: no deployment has ever needed to change it
+# from its fixed values, so declare_fusion_config() hardcodes them instead (see
+# traffic_light_fusion_node.cpp). `camera_namespaces` is deliberately not here either: which
 # cameras feed the back-end is a per-deployment fact, injected by the launch file, the same way the
 # front-end's model/label paths are.
 /**:
   ros__parameters:
+    multi_camera_fusion:
+      # Deployed value, not autoware_traffic_light_multi_camera_fusion's package default (0.09):
+      # autoware_launch/config/perception/traffic_light_recognition/traffic_light_multi_camera_fusion/traffic_light_multi_camera_fusion.param.yaml
+      # overrides it to 0.12. This must stay strictly greater than the camera period (0.100005s on
+      # x2): multi_camera_fusion() drops every record older than message_lifespan relative to the
+      # newest one, so at 0.09 the previous cycle's other-camera record is always already stale and
+      # each fusion trigger sees only its own camera -- i.e. half the published messages become
+      # monocular, losing whichever light only the other camera can see.
+      message_lifespan: 0.12
+      prior_log_odds: 0.0
+
     arbiter:
       external_delay_tolerance: 5.0
       external_time_tolerance: 5.0

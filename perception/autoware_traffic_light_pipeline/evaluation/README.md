@@ -33,6 +33,13 @@ ros2 run autoware_traffic_light_pipeline run_traffic_light_pipeline_evaluation \
   --config $CFG \
   --dataset <t4dataset のパス> \
   --output-bag result/pipeline_bag
+
+# 前段 + 後段（フルシステム実行の到着順を再現して厳密に突き合わせる場合。下記「入出力」参照）
+ros2 run autoware_traffic_light_pipeline run_traffic_light_pipeline_evaluation \
+  --config $CFG \
+  --dataset <t4dataset のパス> \
+  --output-bag result/pipeline_bag \
+  --arrival-order-bag <フルシステム実行の result_bag>
 ```
 
 データセットのレイアウトは固定です（Component Test ハーネスと同じ規約）。
@@ -55,6 +62,15 @@ ros2 run autoware_traffic_light_pipeline run_traffic_light_pipeline_evaluation \
   ペアリングし、相手のいないメッセージは捨てます。
 - 出力トピック名は評価用 yaml の `cameras[].output_topics`（前段）と `fusion.output_topic`
   （後段）で指定します（本番のトピック名）。
+- pass B（後段）への投入順は既定で `(stamp, camera_index)` 昇順です。本番では 2 台のカメラが
+  別 Jetson で動くため、1 サイクル内でどちらの triple が multi_camera_fusion に先に着くかは
+  前段のレイテンシ次第で毎サイクル変わります（x2 実測で camera5 が先: 597 サイクル中 244 =
+  40.9%）。`message_lifespan` がカメラ周期より大きければどちらの順でも両眼融合になるので、
+  順序が効くのは 2 台の判定が食い違うフレームだけですが、そこでは相手カメラの cycle-N /
+  cycle-N-1 のどちらが混ざるかが変わり、融合色が変わることがあります。
+  フルシステム実行と厳密に突き合わせたい場合は `--arrival-order-bag <その実行の result_bag>`
+  を渡すと、その実行の `internal/traffic_signals` の publish 順で pass B を再生します。
+  既定にしていないのは、リファレンス実行なしで決定的・自己完結に回せることを優先しているためです。
 - 各メッセージはヘッダスタンプの時刻で書き込むため、同じデータセットからは常に同じ bag が
   得られます（実行時刻には依存しません）。
 - 出力 bag のストレージ形式は入力 bag と同じものを自動で使います。
@@ -78,13 +94,18 @@ ros2 run autoware_traffic_light_pipeline run_traffic_light_pipeline_evaluation \
 `map_based_detector.min/max_timestamp_offset` だけなので、そこだけ `cameras[]` 側にあります。
 
 `fusion:` セクションは `run_traffic_light_pipeline_evaluation` でのみ使用します。
-`multi_camera_fusion` / `crosswalk_estimator` は `traffic_light_fusion_node.cpp` の
-`declare_fusion_config()` と同じ固定値をツール側でハードコードしており（本番でも parameter
-化されていない）、yaml に書くのは唯一 parameter 化されている `arbiter.*` のみです
+`crosswalk_estimator` は `traffic_light_fusion_node.cpp` の `declare_fusion_config()` と同じ
+固定値をツール側でハードコードしており（本番でも parameter 化されていない）、yaml に書くのは
+parameter 化されている `multi_camera_fusion.*` / `arbiter.*` のみです
 （`config/traffic_light_fusion.param.yaml` と同値）。
 
-model_path / label_path 類は環境依存の絶対パスなので、手元の `autoware_data` に合わせて
-書き換えてください。
+model_path / label_path 類は本番（webauto CI）と同じ `/opt/autoware/mlmodels/` 配下の
+ML package 実体を指しています。**別の場所にある同じ `.onnx` に差し替えるときは注意が必要です**:
+`.onnx` が同一でも、その隣にキャッシュされている TensorRT の `.engine` が別バージョンで焼かれて
+いると fp16 の演算結果がわずかに変わります（実測: confidence が 0.99998 ではなく厳密に 1.0 に
+なる）。`multi_camera_fusion` の `has_higher_or_equal_priority()` は同 confidence 時に
+「後から来た record を採用」する厳密比較なので、この差だけで融合結果の色が変わります。
+本番と数値を合わせたい場合は engine ごと共有する（= 本番と同じパスを指す）のが確実です。
 
 ## rvizでの可視化
 

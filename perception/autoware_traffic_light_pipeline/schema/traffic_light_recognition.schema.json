@@ -26,7 +26,7 @@
         "min_timestamp_offset": {
           "type": "number",
           "description": "Minimum timestamp offset when searching for the corresponding map->camera tf sample.",
-          "default": -0.3
+          "default": -0.04
         },
         "max_timestamp_offset": {
           "type": "number",

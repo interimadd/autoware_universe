@@ -25,14 +25,13 @@ namespace
 {
 
 // Declares this Node's ROS 2 parameters on `node` and returns the resulting
-// TrafficLightFusionConfig the ROS-free TrafficLightFusion core consumes. Only `arbiter.*` is
-// exposed as a parameter, under the prefix of the component it belongs to (mirroring
-// TrafficLightArbiterNode's own parameter names) since one Node now carries what used to be
-// three Nodes' worth of configuration and a flat name could collide with a future one. The other
-// two components' values are hardcoded here instead of declared: no deployment has ever needed to
-// change multi_camera_fusion's or crosswalk_estimator's behavior from their fixed defaults.
-// `source_priority` is normalized here exactly as TrafficLightArbiterNode normalizes it, so the
-// core never has to guard against a typo.
+// TrafficLightFusionConfig the ROS-free TrafficLightFusion core consumes. `multi_camera_fusion.*`
+// and `arbiter.*` are exposed as parameters, each under the prefix of the component it belongs to
+// (mirroring that component's own Node's parameter names) since one Node now carries what used to
+// be three Nodes' worth of configuration and a flat name could collide with a future one.
+// crosswalk_estimator's values are hardcoded here instead of declared: no deployment has ever
+// needed to change its behavior from its fixed defaults. `source_priority` is normalized here
+// exactly as TrafficLightArbiterNode normalizes it, so the core never has to guard against a typo.
 //
 // `camera_namespaces` is not part of the config struct: it selects which cameras this Node
 // subscribes to, which is Node I/O, not core configuration. It is read separately by the Node.
@@ -40,12 +39,15 @@ TrafficLightFusionConfig declare_fusion_config(rclcpp::Node * node)
 {
   TrafficLightFusionConfig config;
 
-  // Fixed values, not parameters: no deployment has ever needed to change multi_camera_fusion's
-  // behavior from these, so they are hardcoded here rather than exposed in
-  // traffic_light_fusion.param.yaml. Values mirror autoware_traffic_light_multi_camera_fusion's
-  // own package defaults.
-  config.multi_camera_fusion.message_lifespan = 0.09;
-  config.multi_camera_fusion.prior_log_odds = 0.0;
+  // These two are the ones MultiCameraFusionNode itself declares and every x2 deployment overrides
+  // (see config/traffic_light_fusion.param.yaml for why message_lifespan must exceed the camera
+  // period), so they are real parameters rather than hardcoded values.
+  config.multi_camera_fusion.message_lifespan =
+    node->declare_parameter<double>("multi_camera_fusion.message_lifespan");
+  config.multi_camera_fusion.prior_log_odds =
+    node->declare_parameter<double>("multi_camera_fusion.prior_log_odds");
+  // Not declared: MultiCameraFusionNode declares these two under `signal_consistency_check.*`, but
+  // no x2 param file sets either, so both keep the package default (disabled).
   config.multi_camera_fusion.use_signal_consistency_check = false;
   config.multi_camera_fusion.publish_partial_matched_signal = false;
   // lanelet_map_ptr is deliberately left null: TrafficLightFusion's constructor fills it in from

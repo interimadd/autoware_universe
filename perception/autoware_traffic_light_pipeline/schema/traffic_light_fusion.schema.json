@@ -3,6 +3,23 @@
   "title": "autoware_traffic_light_pipeline traffic_light_fusion parameter",
   "type": "object",
   "definitions": {
+    "multi_camera_fusion": {
+      "type": "object",
+      "properties": {
+        "message_lifespan": {
+          "type": "number",
+          "description": "Records older than this many seconds relative to the newest record are dropped before fusing. Must be strictly greater than the camera period, otherwise every fusion trigger sees only its own camera's record.",
+          "default": 0.12
+        },
+        "prior_log_odds": {
+          "type": "number",
+          "description": "Prior log-odds for a traffic light state, used when accumulating per-camera evidence for a group.",
+          "default": 0.0
+        }
+      },
+      "required": ["message_lifespan", "prior_log_odds"],
+      "additionalProperties": false
+    },
     "arbiter": {
       "type": "object",
       "properties": {
@@ -45,11 +62,14 @@
     "traffic_light_fusion": {
       "type": "object",
       "properties": {
+        "multi_camera_fusion": {
+          "$ref": "#/definitions/multi_camera_fusion"
+        },
         "arbiter": {
           "$ref": "#/definitions/arbiter"
         }
       },
-      "required": ["arbiter"],
+      "required": ["multi_camera_fusion", "arbiter"],
       "additionalProperties": false
     }
   },
