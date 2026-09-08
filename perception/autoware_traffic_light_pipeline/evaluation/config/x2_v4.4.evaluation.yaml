@@ -1,16 +1,11 @@
 # Evaluation config for the x2 vehicle (sensor kit v4.4, camera6/camera7).
 #
-# input_bag / lanelet2_map / map_projector_info are derived from --dataset, not listed here:
-# every dataset uses the fixed layout <dataset>/input_bag, <dataset>/map/lanelet2_map.osm,
-# <dataset>/map/map_projector_info.yaml.
-#
 # Run with:
 #   ros2 run autoware_traffic_light_pipeline run_traffic_light_recognition_evaluation \
 #     --config <this file> \
 #     --dataset <t4dataset dir> \
 #     --output-bag result/output_bag
 
-# One TrafficLightRecognition instance per entry.
 cameras:
   - namespace: camera4
     camera_info_topic: /sensing/camera/camera4/camera_info
@@ -18,10 +13,9 @@ cameras:
     output_topics:
       traffic_signals: /perception/traffic_light_recognition/camera4/classification/traffic_signals
       rois: /perception/traffic_light_recognition/camera4/detection/rois
-    # map->camera tf のサンプリング窓。カメラごとに異なる唯一のパラメータ。
     map_based_detector:
-      # -0.04, not the upstream package default -0.3: every x2 camera overrides it in
-      # edge_auto_jetson_launch/launch/traffic_light_recognition/traffic_light_recognition.launch.xml.
+      # -0.04 instead of the upstream package default of -0.3, because every x2 camera overrides it
+      # in edge_auto_jetson_launch/launch/traffic_light_recognition/traffic_light_recognition.launch.xml.
       min_timestamp_offset: -0.04
       max_timestamp_offset: 0.0
 
@@ -32,27 +26,17 @@ cameras:
       traffic_signals: /perception/traffic_light_recognition/camera5/classification/traffic_signals
       rois: /perception/traffic_light_recognition/camera5/detection/rois
     map_based_detector:
-      # -0.04, not the upstream package default -0.3: every x2 camera overrides it in
-      # edge_auto_jetson_launch/launch/traffic_light_recognition/traffic_light_recognition.launch.xml.
+      # -0.04 instead of the upstream package default of -0.3, because every x2 camera overrides it
+      # in edge_auto_jetson_launch/launch/traffic_light_recognition/traffic_light_recognition.launch.xml.
       min_timestamp_offset: -0.04
       max_timestamp_offset: 0.0
 
-# 全カメラ共通の TrafficLightRecognitionConfig。閾値は config/traffic_light_recognition.param.yaml
-# と、model_path / label_path 類は launch/traffic_light_recognition.launch.xml と同じ値を置く。
-# モデル/ラベルは ~/autoware_data/ 配下を指す。
-# 注: 本番(webauto CI)は /opt/autoware/mlmodels 配下の ML package 実体を使う。両者の .onnx は
-# md5 一致だが、各ディレクトリには TensorRT のバージョンごとに焼かれた .engine がキャッシュと
-# して同居するため、読む engine が変わると fp16 の演算結果がわずかに変わる
-# (例: confidence が 0.99998 ではなく厳密に 1.0 になる)。multi_camera_fusion の
-# has_higher_or_equal_priority() は同 confidence 時に「後から来た record を採用」する
-# 厳密比較なので、この差だけで融合結果の色が変わり得る。本番と厳密に突き合わせるときは
-# /opt/autoware/mlmodels 配下(要 ML package インストール)に向け直すこと。
 recognition:
   whole_image_detector:
     model_path: ~/autoware_data/tensorrt_yolox/yolox_s_car_ped_tl_detector_960_960_batch_1.onnx
     label_path: ~/autoware_data/tensorrt_yolox/car_ped_tl_detector_labels.txt
-    # roi_remap_path is omitted: it defaults to autoware_tensorrt_yolox's own installed
-    # traffic_light_roi_label_remap.csv (see run_traffic_light_recognition_evaluation.cpp).
+    # roi_remap_path is omitted, so it falls back to the traffic_light_roi_label_remap.csv installed
+    # by autoware_tensorrt_yolox itself (see run_traffic_light_recognition_evaluation.cpp).
     score_threshold: 0.35
     nms_threshold: 0.7
 
@@ -68,24 +52,14 @@ recognition:
     over_exposure_threshold: 0.85
     under_exposure_threshold: -0.83
 
-# 後段（fusion）の設定。run_traffic_light_pipeline_evaluation でのみ使用する。
-# crosswalk_estimator は traffic_light_fusion_node.cpp の declare_fusion_config() と同じ固定値を
-# ツール側でハードコードしており(本番でも parameter 化されていない)、ここに書くのは parameter
-# 化されている multi_camera_fusion.* / arbiter.* のみ
-# (config/traffic_light_fusion.param.yaml と同値)。
 fusion:
-  # シナリオの degradation_topic と同じトピック名。
-  # 注: crosswalk_estimator は現在スキップされているので（traffic_light_fusion.cpp の
-  # TEMPORARY コメント参照）、ここに書き出されるのは arbiter の出力。本番の
-  # internal/traffic_signals（multi_camera_fusion の出力）とは段が 1 つ違うが、external(V2X)
-  # 入力が無く arbiter は素通りなので内容は同一（実測 0/1194）。
   output_topic: /perception/traffic_light_recognition/internal/traffic_signals
 
   multi_camera_fusion:
-    # 0.12。upstream パッケージのデフォルト 0.09 ではなく autoware_launch/config/perception/
-    # traffic_light_recognition/traffic_light_multi_camera_fusion/*.param.yaml の実デプロイ値。
-    # カメラ周期 0.100005s より大きくないと、前フレームの他カメラ record が必ず期限切れになり
-    # 各トリガが単眼結果を publish してしまう。
+    # Taken from autoware_launch/config/perception/traffic_light_recognition/
+    # traffic_light_multi_camera_fusion/*.param.yaml.
+    # Although the default value is 0.09, it has to be larger than the 0.1 s camera period; otherwise
+    # the recognition results of the other cameras always expire and are never taken into account.
     message_lifespan: 0.12
     prior_log_odds: 0.0
 
