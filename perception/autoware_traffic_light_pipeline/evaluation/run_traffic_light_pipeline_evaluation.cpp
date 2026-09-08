@@ -52,11 +52,8 @@
 #include "traffic_light_fusion/traffic_light_fusion.hpp"
 #include "traffic_light_recognition/traffic_light_recognition.hpp"
 
-#include <rclcpp/serialization.hpp>
 #include <rclcpp/time.hpp>
-#include <rosbag2_cpp/reader.hpp>
 #include <rosbag2_cpp/writer.hpp>
-#include <rosbag2_storage/storage_filter.hpp>
 
 #include <sensor_msgs/msg/camera_info.hpp>
 
@@ -64,14 +61,11 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <cstdint>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <tuple>
-#include <unordered_map>
-#include <utility>
 #include <vector>
 
 namespace
@@ -221,89 +215,6 @@ std::vector<RecordedFrameResult> run_recognition(
   return recorded_results;
 }
 
-// --- pass A': optional arrival-order override ---------------------------------------------------
-
-// Reads the publish order of `topic` out of `bag_path` and returns each message's own
-// `stamp` field, in the order the bag stores them (i.e. the order the recorder received them).
-//
-// Why this exists: which camera's (camera_info, rois, signals) triple reaches
-// multi_camera_fusion first within a cycle is an *input* to the back-end, not something the
-// dataset determines. The two cameras run on separate Jetsons, so on a vehicle (and in a
-// full-system webauto run) the winner varies cycle by cycle -- measured at 41% / 59% on
-// x2 -- while this offline tool necessarily replays in one fixed order. With
-// `message_lifespan` > the camera period both orders yield binocular fusion, so the choice
-// only matters on the frames where the two cameras disagree; there it changes whether the
-// other camera contributes its cycle-N or cycle-N-1 record, which can change the fused colour.
-//
-// Passing `--arrival-order-bag <full-system result_bag>` replays pass B in that run's real
-// arrival order instead of stamp order, which is what makes an exact comparison against a
-// specific full-system run possible. It is a cross-validation aid, deliberately NOT the
-// default: without it the tool stays fully deterministic and self-contained, which is what a
-// component test in CI needs.
-std::vector<std::int64_t> load_arrival_order(
-  const std::string & bag_path, const std::string & topic)
-{
-  rosbag2_cpp::Reader reader;
-  reader.open({bag_path, autoware::traffic_light::evaluation::detect_input_bag_storage_id(bag_path)});
-
-  rosbag2_storage::StorageFilter filter;
-  filter.topics = {topic};
-  reader.set_filter(filter);
-
-  rclcpp::Serialization<autoware_perception_msgs::msg::TrafficLightGroupArray> serialization;
-  std::vector<std::int64_t> order;
-  while (reader.has_next()) {
-    const auto bag_message = reader.read_next();
-    rclcpp::SerializedMessage serialized(*bag_message->serialized_data);
-    autoware_perception_msgs::msg::TrafficLightGroupArray msg;
-    serialization.deserialize_message(&serialized, &msg);
-    order.push_back(rclcpp::Time(msg.stamp).nanoseconds());
-  }
-  return order;
-}
-
-// Reorders `recorded_frame_results` to follow `arrival_order` (a list of trigger stamps, see
-// load_arrival_order()). Results whose stamp does not appear in the reference run keep their
-// stamp-ordered position at the end, so a reference bag covering only part of the dataset still
-// works. Logs how many results were matched, since a low count means the reference bag does not
-// correspond to this dataset.
-void apply_arrival_order(
-  std::vector<RecordedFrameResult> & recorded_frame_results,
-  const std::vector<std::int64_t> & arrival_order)
-{
-  std::unordered_map<std::int64_t, std::size_t> position_of_stamp;
-  for (std::size_t i = 0; i < arrival_order.size(); ++i) {
-    // First occurrence wins: a stamp identifies one camera's one cycle, so it should appear once.
-    position_of_stamp.emplace(arrival_order[i], i);
-  }
-
-  const auto unmatched_position = arrival_order.size();
-  std::size_t matched = 0;
-  std::vector<std::pair<std::size_t, RecordedFrameResult>> keyed;
-  keyed.reserve(recorded_frame_results.size());
-  for (const auto & recorded : recorded_frame_results) {
-    const auto stamp = rclcpp::Time(recorded.camera_info.header.stamp).nanoseconds();
-    const auto it = position_of_stamp.find(stamp);
-    if (it != position_of_stamp.end()) {
-      ++matched;
-      keyed.emplace_back(it->second, recorded);
-    } else {
-      keyed.emplace_back(unmatched_position, recorded);
-    }
-  }
-
-  std::stable_sort(
-    keyed.begin(), keyed.end(),
-    [](const auto & lhs, const auto & rhs) { return lhs.first < rhs.first; });
-
-  for (std::size_t i = 0; i < keyed.size(); ++i) {
-    recorded_frame_results[i] = std::move(keyed[i].second);
-  }
-  std::cerr << "arrival-order override: matched " << matched << " of "
-            << recorded_frame_results.size() << " results against " << arrival_order.size()
-            << " reference messages" << std::endl;
-}
-
 // --- pass B: back-end ----------------------------------------------------------------------------
 
 // One TrafficLightFusion, fed pass A's results in ascending (stamp, camera_index) order --
@@ -369,8 +280,6 @@ struct CommandLineArgs
   std::string config_path;
   std::string dataset_path;
   std::string output_bag_path;
-  // Optional; see load_arrival_order().
-  std::string arrival_order_bag_path;
 };
 
 CommandLineArgs parse_args(int argc, char ** argv)
@@ -384,14 +293,12 @@ CommandLineArgs parse_args(int argc, char ** argv)
       args.dataset_path = argv[++i];
     } else if (arg == "--output-bag" && i + 1 < argc) {
       args.output_bag_path = argv[++i];
-    } else if (arg == "--arrival-order-bag" && i + 1 < argc) {
-      args.arrival_order_bag_path = argv[++i];
     }
   }
   if (args.config_path.empty() || args.dataset_path.empty() || args.output_bag_path.empty()) {
     throw std::runtime_error(
       "usage: run_traffic_light_pipeline_evaluation --config <path> --dataset <path> "
-      "--output-bag <path> [--arrival-order-bag <path>]");
+      "--output-bag <path>");
   }
   return args;
 }
@@ -401,20 +308,14 @@ CommandLineArgs parse_args(int argc, char ** argv)
 // driven without going through argv (e.g. from tests).
 void run_evaluation(
   const std::string & config_path, const std::string & dataset_path,
-  const std::string & output_bag_path, const std::string & arrival_order_bag_path)
+  const std::string & output_bag_path)
 {
   const auto config =
     autoware::traffic_light::evaluation::load_evaluation_config(config_path, dataset_path);
   const auto fusion_config = parse_fusion(YAML::LoadFile(config_path));
   const auto map_msg = autoware::traffic_light::evaluation::load_map(config);
 
-  auto recorded_frame_results = run_recognition(config, map_msg);
-  if (!arrival_order_bag_path.empty()) {
-    apply_arrival_order(
-      recorded_frame_results,
-      load_arrival_order(
-        arrival_order_bag_path, fusion_config.output_topic));
-  }
+  const auto recorded_frame_results = run_recognition(config, map_msg);
   const auto recorded_fusion_results = run_fusion(fusion_config, recorded_frame_results, map_msg);
 
   write_to_rosbag(
@@ -427,8 +328,7 @@ int main(int argc, char ** argv)
 {
   try {
     const auto args = parse_args(argc, argv);
-    run_evaluation(
-      args.config_path, args.dataset_path, args.output_bag_path, args.arrival_order_bag_path);
+    run_evaluation(args.config_path, args.dataset_path, args.output_bag_path);
   } catch (const std::exception & e) {
     std::cerr << "run_traffic_light_pipeline_evaluation failed: " << e.what() << std::endl;
     return 1;

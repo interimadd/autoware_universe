@@ -33,13 +33,6 @@ ros2 run autoware_traffic_light_pipeline run_traffic_light_pipeline_evaluation \
   --config $CFG \
   --dataset <t4dataset のパス> \
   --output-bag result/pipeline_bag
-
-# 前段 + 後段（フルシステム実行の到着順を再現して厳密に突き合わせる場合。下記「入出力」参照）
-ros2 run autoware_traffic_light_pipeline run_traffic_light_pipeline_evaluation \
-  --config $CFG \
-  --dataset <t4dataset のパス> \
-  --output-bag result/pipeline_bag \
-  --arrival-order-bag <フルシステム実行の result_bag>
 ```
 
 データセットのレイアウトは固定です（Component Test ハーネスと同じ規約）。
@@ -66,15 +59,27 @@ ros2 run autoware_traffic_light_pipeline run_traffic_light_pipeline_evaluation \
   後段出力は **arbiter の出力**です（`src/traffic_light_fusion/traffic_light_fusion.cpp` の
   TEMPORARY コメント参照）。本番の `internal/traffic_signals`（multi_camera_fusion の出力）とは
   段が 1 つ違いますが、external(V2X) 入力が無く arbiter は素通りなので内容は同一です（実測 0/1194）。
-- pass B（後段）への投入順は既定で `(stamp, camera_index)` 昇順です。本番では 2 台のカメラが
-  別 Jetson で動くため、1 サイクル内でどちらの triple が multi_camera_fusion に先に着くかは
-  前段のレイテンシ次第で毎サイクル変わります（x2 実測で camera5 が先: 597 サイクル中 244 =
-  40.9%）。`message_lifespan` がカメラ周期より大きければどちらの順でも両眼融合になるので、
-  順序が効くのは 2 台の判定が食い違うフレームだけですが、そこでは相手カメラの cycle-N /
-  cycle-N-1 のどちらが混ざるかが変わり、融合色が変わることがあります。
-  フルシステム実行と厳密に突き合わせたい場合は `--arrival-order-bag <その実行の result_bag>`
-  を渡すと、その実行の `internal/traffic_signals` の publish 順で pass B を再生します。
-  既定にしていないのは、リファレンス実行なしで決定的・自己完結に回せることを優先しているためです。
+- pass B（後段）への投入順は `(stamp, camera_index)` 昇順です。データセットのみから決まるので
+  常に決定的で、リファレンス実行を必要としません。
+  ただしこれは**フルシステム実行と一致するとは限りません**。本番では 2 台のカメラが別 Jetson で
+  動くため、1 サイクル内でどちらの triple が multi_camera_fusion に先に着くかは前段のレイテンシ
+  次第で毎サイクル変わります（x2 実測で camera5 が先: 597 サイクル中 244 = 40.9%）。
+  `message_lifespan` がカメラ周期より大きければどちらの順でも両眼融合になるので、順序が効くのは
+  2 台の判定が食い違うフレームだけですが、そこでは相手カメラの cycle-N / cycle-N-1 のどちらが
+  混ざるかが変わり、融合色が変わることがあります。
+  TLR_UC_001531_shiojiri_gen2_sunny_02 での実測（criteria_1 / criteria_2 / criteria_4）:
+
+  | pass B の投入順 | criteria_1 | criteria_2 | criteria_4 |
+  | --- | --- | --- | --- |
+  | camera4 先着固定（= 本ツールの投入順） | 23/26 = 88.46% | 34/34 = 100% | 762/762 = 100% |
+  | camera5 先着固定 | 22/26 = 84.62% | 34/34 = 100% | 762/762 = 100% |
+  | フルシステム実行の実順序（camera5 先が 40.9%） | 22/26 = 84.62% | 33/34 = 97.06% | 761/762 = 99.87% |
+
+  フルシステム実行はどちらの固定順よりも悪い値になります（順序が途中で切り替わることで、
+  一貫した順序なら起きない取りこぼしが出るため）。つまり**静的な順序ではフルシステム実行を
+  再現できません**。厳密に突き合わせる必要が生じた場合は、本ツールにフラグを足すのではなく
+  使い捨ての検証スクリプトで実行順を再生してください（component test 自体が特定の実行結果に
+  依存しないようにするため）。
 - 各メッセージはヘッダスタンプの時刻で書き込むため、同じデータセットからは常に同じ bag が
   得られます（実行時刻には依存しません）。
 - 出力 bag のストレージ形式は入力 bag と同じものを自動で使います。
