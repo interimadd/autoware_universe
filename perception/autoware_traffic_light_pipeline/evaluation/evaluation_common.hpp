@@ -36,7 +36,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <variant>
 #include <vector>
 
 namespace autoware::traffic_light::evaluation
@@ -44,14 +43,8 @@ namespace autoware::traffic_light::evaluation
 
 // --- yaml helpers -------------------------------------------------------------------------------
 
-// Returns `node[key]`, throwing if it is missing -- every evaluation config field is required
-// unless the caller explicitly treats it as optional (see optional_topic()).
+// Returns `node[key]`, throwing if it is missing -- every evaluation config field is required.
 YAML::Node require(const YAML::Node & node, const std::string & key);
-
-// Returns `node[key]` as a string, or std::nullopt if the key is absent or explicitly null. Used
-// for the one legitimately-optional pair of fields (compressed_image_topic / image_topic), where
-// exactly one of the two must be set.
-std::optional<std::string> optional_topic(const YAML::Node & node, const std::string & key);
 
 // Expands a leading "~" to $HOME, the same convention the shell and ROS2 launch's $(env HOME)
 // support, so evaluation config yaml files can reference models under the user's home directory
@@ -71,8 +64,7 @@ struct CameraConfig
 {
   std::string ns;
   std::string camera_info_topic;
-  std::optional<std::string> compressed_image_topic;
-  std::optional<std::string> image_topic;
+  std::string compressed_image_topic;
   std::string traffic_signals_topic;
   std::string rois_topic;
   double min_timestamp_offset = 0.0;
@@ -110,22 +102,22 @@ EvaluationConfig load_evaluation_config(
 // ---------------------------------------------------------------------------------
 
 // One exact-stamp matched (image, camera_info) pair, tagged with the camera it came from -- the
-// same input unit the Node's message_filters::ExactTime sync hands to run(). `image` is kept in
-// whatever form it was read from the bag (compressed or not): decoding every frame up front, for
-// the whole bag, is what made load_frames() the dominant memory cost of an evaluation run. Call
+// same input unit the Node's message_filters::ExactTime sync hands to run(). `image` is kept
+// compressed, as it was read from the bag: decoding every frame up front, for the whole bag, is
+// what made load_frames() the dominant memory cost of an evaluation run. Call
 // decode_frame_image() instead, right before handing the frame to the pipeline.
 struct Frame
 {
   std::size_t camera_index;
-  std::variant<sensor_msgs::msg::Image, sensor_msgs::msg::CompressedImage> image;
+  sensor_msgs::msg::CompressedImage image;
   sensor_msgs::msg::CameraInfo camera_info;
 };
 
 // Reads every configured camera's image/camera_info topics out of `config.input_bag_path` and
 // returns the exact-stamp matched frames, in ascending (stamp, camera_index) order. Messages with
 // no same-stamp partner on the other topic are dropped -- the same policy
-// message_filters::ExactTime enforces in production. Compressed images are not decoded here; see
-// Frame and decode_frame_image().
+// message_filters::ExactTime enforces in production. Images are not decoded here; see Frame and
+// decode_frame_image().
 //
 // Buffers every camera's frames in memory at once, which is the right tradeoff for callers that
 // must replay every camera in one globally stamp-ordered pass
@@ -145,11 +137,10 @@ std::vector<Frame> load_frames(const EvaluationConfig & config);
 std::vector<Frame> load_frames_for_camera(
   const EvaluationConfig & config, std::size_t camera_index);
 
-// Decodes `frame.image` if it was read from a compressed_image_topic, returning the plain image
-// the pipeline consumes. Meant to be called right before that -- one frame at a time, as it is
-// about to be processed -- rather than while load_frames() buffers the whole bag, so at most one
-// decoded image is ever held in memory. Returns std::nullopt (after logging to stderr) if the
-// image fails to decompress.
+// Decodes `frame.image`, returning the plain image the pipeline consumes. Meant to be called right
+// before that -- one frame at a time, as it is about to be processed -- rather than while
+// load_frames() buffers the whole bag, so at most one decoded image is ever held in memory. Returns
+// std::nullopt (after logging to stderr) if the image fails to decompress.
 std::optional<sensor_msgs::msg::Image> decode_frame_image(const Frame & frame);
 
 // The Node gets its map->camera transforms from a tf2_ros::TransformListener; offline they all

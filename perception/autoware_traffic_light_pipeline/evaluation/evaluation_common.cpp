@@ -55,15 +55,6 @@ YAML::Node require(const YAML::Node & node, const std::string & key)
   return child;
 }
 
-std::optional<std::string> optional_topic(const YAML::Node & node, const std::string & key)
-{
-  const auto child = node[key];
-  if (!child || child.IsNull()) {
-    return std::nullopt;
-  }
-  return child.as<std::string>();
-}
-
 std::string expand_user_path(const std::string & path)
 {
   if (path.empty() || path[0] != '~') {
@@ -103,13 +94,7 @@ CameraConfig parse_camera(const YAML::Node & node)
   CameraConfig camera;
   camera.ns = require(node, "namespace").as<std::string>();
   camera.camera_info_topic = require(node, "camera_info_topic").as<std::string>();
-  camera.compressed_image_topic = optional_topic(node, "compressed_image_topic");
-  camera.image_topic = optional_topic(node, "image_topic");
-  if (camera.compressed_image_topic.has_value() == camera.image_topic.has_value()) {
-    throw std::runtime_error(
-      "evaluation config: camera '" + camera.ns +
-      "' must set exactly one of compressed_image_topic / image_topic");
-  }
+  camera.compressed_image_topic = require(node, "compressed_image_topic").as<std::string>();
 
   const auto output_topics = require(node, "output_topics");
   camera.traffic_signals_topic = require(output_topics, "traffic_signals").as<std::string>();
@@ -196,7 +181,6 @@ struct TopicRole
 {
   std::size_t camera_index;
   bool is_image;
-  bool image_is_compressed;
 };
 
 std::unordered_map<std::string, TopicRole> build_topic_roles(
@@ -205,21 +189,18 @@ std::unordered_map<std::string, TopicRole> build_topic_roles(
   std::unordered_map<std::string, TopicRole> roles;
   for (std::size_t index = 0; index < cameras.size(); ++index) {
     const auto & camera = cameras[index];
-    const bool compressed = camera.compressed_image_topic.has_value();
-    const auto & image_topic = compressed ? *camera.compressed_image_topic : *camera.image_topic;
-    roles[image_topic] = TopicRole{index, true, compressed};
-    roles[camera.camera_info_topic] = TopicRole{index, false, false};
+    roles[camera.compressed_image_topic] = TopicRole{index, true};
+    roles[camera.camera_info_topic] = TopicRole{index, false};
   }
   return roles;
 }
 
 // One camera's images/camera_infos keyed by header stamp while the bag is being read, so pairing
-// does not depend on how the two topics happened to interleave on disk. Images are kept as read
-// (compressed or not) -- see Frame.
+// does not depend on how the two topics happened to interleave on disk. Images are kept
+// compressed, as read -- see Frame.
 struct CameraBuffers
 {
-  std::map<int64_t, std::variant<sensor_msgs::msg::Image, sensor_msgs::msg::CompressedImage>>
-    images_by_stamp;
+  std::map<int64_t, sensor_msgs::msg::CompressedImage> images_by_stamp;
   std::map<int64_t, sensor_msgs::msg::CameraInfo> camera_infos_by_stamp;
 };
 
@@ -251,13 +232,10 @@ std::vector<Frame> load_frames(const EvaluationConfig & config)
       auto camera_info = deserialize<sensor_msgs::msg::CameraInfo>(bag_message);
       camera_buffers.camera_infos_by_stamp.emplace(
         stamp_nanoseconds(camera_info.header), std::move(camera_info));
-    } else if (role.image_is_compressed) {
+    } else {
       auto compressed = deserialize<sensor_msgs::msg::CompressedImage>(bag_message);
       camera_buffers.images_by_stamp.emplace(
         stamp_nanoseconds(compressed.header), std::move(compressed));
-    } else {
-      auto image = deserialize<sensor_msgs::msg::Image>(bag_message);
-      camera_buffers.images_by_stamp.emplace(stamp_nanoseconds(image.header), std::move(image));
     }
   }
 
@@ -286,12 +264,11 @@ std::vector<Frame> load_frames(const EvaluationConfig & config)
 std::vector<Frame> load_frames_for_camera(const EvaluationConfig & config, std::size_t camera_index)
 {
   const auto & camera = config.cameras.at(camera_index);
-  const bool compressed = camera.compressed_image_topic.has_value();
-  const auto & image_topic = compressed ? *camera.compressed_image_topic : *camera.image_topic;
 
   rosbag2_cpp::Reader reader;
   reader.open(config.input_bag_path);
-  reader.set_filter(rosbag2_storage::StorageFilter{{image_topic, camera.camera_info_topic}});
+  reader.set_filter(
+    rosbag2_storage::StorageFilter{{camera.compressed_image_topic, camera.camera_info_topic}});
 
   CameraBuffers buffers;
   while (reader.has_next()) {
@@ -300,13 +277,10 @@ std::vector<Frame> load_frames_for_camera(const EvaluationConfig & config, std::
       auto camera_info = deserialize<sensor_msgs::msg::CameraInfo>(bag_message);
       buffers.camera_infos_by_stamp.emplace(
         stamp_nanoseconds(camera_info.header), std::move(camera_info));
-    } else if (compressed) {
+    } else {
       auto compressed_image = deserialize<sensor_msgs::msg::CompressedImage>(bag_message);
       buffers.images_by_stamp.emplace(
         stamp_nanoseconds(compressed_image.header), std::move(compressed_image));
-    } else {
-      auto image = deserialize<sensor_msgs::msg::Image>(bag_message);
-      buffers.images_by_stamp.emplace(stamp_nanoseconds(image.header), std::move(image));
     }
   }
 
@@ -325,10 +299,7 @@ std::vector<Frame> load_frames_for_camera(const EvaluationConfig & config, std::
 
 std::optional<sensor_msgs::msg::Image> decode_frame_image(const Frame & frame)
 {
-  if (const auto * image = std::get_if<sensor_msgs::msg::Image>(&frame.image)) {
-    return *image;
-  }
-  const auto & compressed = std::get<sensor_msgs::msg::CompressedImage>(frame.image);
+  const auto & compressed = frame.image;
   auto decoded = autoware::image_transport_decompressor::decompress_image(compressed, "default");
   if (!decoded) {
     std::cerr << "failed to decompress image at " << stamp_nanoseconds(compressed.header) << ": "
