@@ -41,29 +41,30 @@ cameras:
 
 # 全カメラ共通の TrafficLightRecognitionConfig。閾値は config/traffic_light_recognition.param.yaml
 # と、model_path / label_path 類は launch/traffic_light_recognition.launch.xml と同じ値を置く。
-# モデル/ラベルは本番(webauto CI)と同じ /opt/autoware/mlmodels 配下の ML package 実体を指す。
-# ~/autoware_data/ にも同じ .onnx (md5 一致) があるが、そちらには古い TensorRT で焼かれた
-# .engine がキャッシュとして同居しており、それを読むと fp16 の演算結果がわずかに変わる
+# モデル/ラベルは ~/autoware_data/ 配下を指す。
+# 注: 本番(webauto CI)は /opt/autoware/mlmodels 配下の ML package 実体を使う。両者の .onnx は
+# md5 一致だが、各ディレクトリには TensorRT のバージョンごとに焼かれた .engine がキャッシュと
+# して同居するため、読む engine が変わると fp16 の演算結果がわずかに変わる
 # (例: confidence が 0.99998 ではなく厳密に 1.0 になる)。multi_camera_fusion の
 # has_higher_or_equal_priority() は同 confidence 時に「後から来た record を採用」する
-# 厳密比較なので、この差だけで融合結果の色が変わってしまう。engine を本番と共有するために
-# パスごと合わせる。
+# 厳密比較なので、この差だけで融合結果の色が変わり得る。本番と厳密に突き合わせるときは
+# /opt/autoware/mlmodels 配下(要 ML package インストール)に向け直すこと。
 recognition:
   whole_image_detector:
-    model_path: /opt/autoware/mlmodels/tensorrt_yolox/yolox_s_car_ped_tl_detector_960_960_batch_1.onnx
-    label_path: /opt/autoware/mlmodels/tensorrt_yolox/car_ped_tl_detector_labels.txt
+    model_path: ~/autoware_data/tensorrt_yolox/yolox_s_car_ped_tl_detector_960_960_batch_1.onnx
+    label_path: ~/autoware_data/tensorrt_yolox/car_ped_tl_detector_labels.txt
     # roi_remap_path is omitted: it defaults to autoware_tensorrt_yolox's own installed
     # traffic_light_roi_label_remap.csv (see run_traffic_light_recognition_evaluation.cpp).
     score_threshold: 0.35
     nms_threshold: 0.7
 
   car_classifier:
-    model_path: /opt/autoware/mlmodels/traffic_light_classifier/traffic_light_classifier_mobilenetv2_batch_6.onnx
-    label_path: /opt/autoware/mlmodels/traffic_light_classifier/lamp_labels.txt
+    model_path: ~/autoware_data/traffic_light_classifier/traffic_light_classifier_mobilenetv2_batch_6.onnx
+    label_path: ~/autoware_data/traffic_light_classifier/lamp_labels.txt
 
   pedestrian_classifier:
-    model_path: /opt/autoware/mlmodels/traffic_light_classifier/ped_traffic_light_classifier_mobilenetv2_batch_6.onnx
-    label_path: /opt/autoware/mlmodels/traffic_light_classifier/lamp_labels_ped.txt
+    model_path: ~/autoware_data/traffic_light_classifier/ped_traffic_light_classifier_mobilenetv2_batch_6.onnx
+    label_path: ~/autoware_data/traffic_light_classifier/lamp_labels_ped.txt
 
   classifier:
     over_exposure_threshold: 0.85
