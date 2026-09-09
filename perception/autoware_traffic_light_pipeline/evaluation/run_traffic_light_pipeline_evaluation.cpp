@@ -48,10 +48,13 @@
 //   <dataset>/map/lanelet2_map.osm
 //   <dataset>/map/map_projector_info.yaml
 
+#include "common/package_config.hpp"
 #include "evaluation_common.hpp"
+#include "traffic_light_fusion/fusion_config_builder.hpp"
 #include "traffic_light_fusion/traffic_light_fusion.hpp"
 #include "traffic_light_recognition/traffic_light_recognition.hpp"
 
+#include <autoware/component_test_framework/parameter_loader.hpp>
 #include <rclcpp/time.hpp>
 #include <rosbag2_cpp/writer.hpp>
 
@@ -70,7 +73,9 @@
 
 namespace
 {
-using autoware::traffic_light::load_package_param_yaml;
+using autoware::traffic_light::build_fusion_config;
+using autoware::traffic_light::kFusionParamFile;
+using autoware::traffic_light::package_config_path;
 using autoware::traffic_light::TrafficLightFusion;
 using autoware::traffic_light::TrafficLightFusionConfig;
 using autoware::traffic_light::TrafficLightRecognition;
@@ -84,21 +89,12 @@ using autoware::traffic_light::evaluation::require;
 
 // --- back-end config (yaml) -----------------------------------------------------------------
 
-constexpr char kFusionParamFile[] = "traffic_light_fusion.param.yaml";
-
-YAML::Node require_param(const YAML::Node & node, const std::string & key)
-{
-  return autoware::traffic_light::require(node, key, kFusionParamFile);
-}
-
 // The `fusion:` section of the evaluation yaml plus the pipeline-side EvaluationConfig it is
-// parsed alongside. `multi_camera_fusion.*` and `arbiter.*` -- the same two groups
-// declare_fusion_config() declares as parameters in traffic_light_fusion_node.cpp -- come from
-// this package's config/traffic_light_fusion.param.yaml, the very file the launch file feeds that
-// Node, so an evaluation always runs the deployed back-end configuration. The evaluation yaml's
-// `fusion:` section carries only output_topic, which has no package default (it is where this run
-// writes its result). crosswalk_estimator is hardcoded to its production defaults below,
-// mirroring that same function.
+// parsed alongside. The TrafficLightFusionConfig itself is built by build_fusion_config() from
+// this package's config/traffic_light_fusion.param.yaml -- the very function and the very file
+// TrafficLightFusionNode uses -- so an evaluation always runs the deployed back-end configuration.
+// The evaluation yaml's `fusion:` section carries only output_topic, which has no package default
+// (it is where this run writes its result).
 struct FusionEvaluationConfig
 {
   std::string output_topic;
@@ -110,43 +106,12 @@ FusionEvaluationConfig parse_fusion(const YAML::Node & root)
   FusionEvaluationConfig config;
   config.output_topic = require(require(root, "fusion"), "output_topic").as<std::string>();
 
-  const auto fusion_node = load_package_param_yaml(kFusionParamFile);
-
-  const auto multi_camera_fusion_node = require_param(fusion_node, "multi_camera_fusion");
-  config.fusion.multi_camera_fusion.message_lifespan =
-    require_param(multi_camera_fusion_node, "message_lifespan").as<double>();
-  config.fusion.multi_camera_fusion.prior_log_odds =
-    require_param(multi_camera_fusion_node, "prior_log_odds").as<double>();
-
-  // Fixed values, not parameters: mirrors declare_fusion_config()'s hardcoded
-  // signal_consistency_check / crosswalk_estimator defaults (traffic_light_fusion_node.cpp).
-  config.fusion.multi_camera_fusion.use_signal_consistency_check = false;
-  config.fusion.multi_camera_fusion.publish_partial_matched_signal = false;
-
-  const auto arbiter_node = require_param(fusion_node, "arbiter");
-  config.fusion.arbiter.external_delay_tolerance =
-    require_param(arbiter_node, "external_delay_tolerance").as<double>();
-  config.fusion.arbiter.external_time_tolerance =
-    require_param(arbiter_node, "external_time_tolerance").as<double>();
-  config.fusion.arbiter.perception_time_tolerance =
-    require_param(arbiter_node, "perception_time_tolerance").as<double>();
-  config.fusion.arbiter.enable_signal_matching =
-    require_param(arbiter_node, "enable_signal_matching").as<bool>();
-
-  auto source_priority = require_param(arbiter_node, "source_priority").as<std::string>();
-  if (
-    source_priority != "external" && source_priority != "perception" &&
-    source_priority != "confidence") {
-    std::cerr << kFusionParamFile << ": unknown arbiter.source_priority '" << source_priority
-              << "', defaulting to 'confidence'" << std::endl;
-    source_priority = "confidence";
-  }
-  config.fusion.arbiter.source_priority = source_priority;
-
-  config.fusion.crosswalk_estimator.use_last_detect_color = true;
-  config.fusion.crosswalk_estimator.use_pedestrian_signal_detect = true;
-  config.fusion.crosswalk_estimator.last_detect_color_hold_time = 2.0;
-  config.fusion.crosswalk_estimator.flashing_detection.last_colors_hold_time = 1.0;
+  // The package config -- the same file launch/traffic_light_fusion.launch.xml passes the Node --
+  // read with the same rcl yaml parser and turned into a config by the same function
+  // TrafficLightFusionNode's declare_fusion_config() calls.
+  autoware::component_test_framework::ParameterLoader loader;
+  loader.merge_yaml_file(package_config_path(kFusionParamFile));
+  config.fusion = build_fusion_config(loader);
 
   return config;
 }

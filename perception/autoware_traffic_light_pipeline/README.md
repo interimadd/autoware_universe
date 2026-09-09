@@ -138,13 +138,23 @@ Several things are true of this package's parameter surface, all deliberate:
 
 ### Where each value lives
 
-`declare_recognition_config(rclcpp::Node *)` (file-local to
-`traffic_light_recognition_node.cpp`, alongside the Node itself) declares parameters and nothing
-else: it reads exactly the values listed above (plus the
-launch-injected paths) into a deliberately flat `TrafficLightRecognitionConfig`
+Which parameter name fills which field lives in one place:
+`build_recognition_config(Source &)`
+([recognition_config_builder.hpp](src/traffic_light_recognition/recognition_config_builder.hpp)).
+It reads exactly the values listed above (plus the launch-injected paths) into a deliberately flat
+`TrafficLightRecognitionConfig`
 ([traffic_light_recognition.hpp](src/traffic_light_recognition/traffic_light_recognition.hpp)) --
 one struct with no nested per-core config types. It never touches a model or label file, and
 knows nothing about precision, mean/std, `gpu_id`, or any other fixed value above.
+
+`Source` is whatever supplies values by parameter name, so the same mapping serves both callers:
+
+| Caller                                               | `Source`                                                                                                                                                                                                                              |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TrafficLightRecognitionNode` (production)           | `NodeParameterSource` ([node_parameter_source.hpp](src/common/node_parameter_source.hpp)) -- **declares** each parameter, which is what keeps it visible to launch, `--params-file`/`-p`, `ros2 param` and this package's json schema |
+| offline evaluation, `test_traffic_light_recognition` | `autoware::component_test_framework::ParameterLoader` -- reads the same `config/*.param.yaml` with the same rcl yaml parser, with no `rclcpp::Node`                                                                                   |
+
+`test_config_builders_cross_check` pins the two paths to the same result.
 
 Every fixed value, and the label-file reads and nested `TrtYoloXDetectorConfig` /
 `TrafficLightMapBasedDetectorConfig` / `CNNConfig` construction that goes with them, live in
@@ -236,11 +246,14 @@ per-deployment fact, injected by
 [launch/traffic_light_fusion.launch.xml](launch/traffic_light_fusion.launch.xml), the same way the
 front-end's model/label paths are.
 
-`declare_fusion_config(rclcpp::Node *)` (file-local to `traffic_light_fusion_node.cpp`) declares
-those parameters and nothing else, returning the flat
-`TrafficLightFusionConfig` the core consumes. The one piece of logic it carries is normalizing an
-unrecognized `arbiter.source_priority` to `"confidence"` (with a warning), exactly as
-`TrafficLightArbiterNode` does -- the core itself would silently do the same, unwarned.
+`build_fusion_config(Source &)`
+([fusion_config_builder.hpp](src/traffic_light_fusion/fusion_config_builder.hpp)) maps those
+parameter names to the flat `TrafficLightFusionConfig` the core consumes -- the back-end
+counterpart of `build_recognition_config()` above, with the same two `Source`s
+(`TrafficLightFusionNode` and `run_traffic_light_pipeline_evaluation`). The one piece of logic it
+carries is normalizing an unrecognized `arbiter.source_priority` to `"confidence"` (with a
+warning), exactly as `TrafficLightArbiterNode` does -- the core itself would silently do the same,
+unwarned.
 
 ## Testing
 
@@ -248,6 +261,7 @@ unrecognized `arbiter.source_priority` to `"confidence"` (with a warning), exact
 | -------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
 | `test_traffic_light_recognition`             | required | `TrafficLightRecognition::run()` with an empty map / no route, tf-resolution failure, `set_route()` error propagation |
 | `test_traffic_light_recognition_integration` | required | Front-end Node pub/sub: the 3 production output topics fire                                                           |
+| `test_config_builders_cross_check`           | no       | `config/*.param.yaml` builds the same config through the Node's parameters and through `ParameterLoader`              |
 
 GPU-gated tests are additionally compiled only when CUDA and TensorRT are detected
 (`TRT_AVAIL AND CUDA_AVAIL` in `CMakeLists.txt`, matching `autoware_traffic_light_classifier`'s

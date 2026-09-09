@@ -24,7 +24,7 @@
 // additionally gated in CMakeLists.txt behind TRT_AVAIL AND CUDA_AVAIL.
 //
 
-#include "../../src/common/config_yaml.hpp"
+#include "../../src/common/package_config.hpp"
 #include "../../src/traffic_light_recognition/traffic_light_recognition_node.hpp"
 
 #include <autoware/cuda_utils/cuda_gtest_utils.hpp>
@@ -145,7 +145,7 @@ rclcpp::NodeOptions make_node_options(const RequiredData & data)
   std::vector<std::string> args{
     "--ros-args",
     "--params-file",
-    tl::package_config_path("traffic_light_recognition.param.yaml"),
+    tl::package_config_path(tl::kRecognitionParamFile),
     "-p",
     "whole_image_detector.model_path:=" + data.yolox_model,
     "-p",

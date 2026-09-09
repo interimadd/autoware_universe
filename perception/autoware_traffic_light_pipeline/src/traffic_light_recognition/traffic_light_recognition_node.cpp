@@ -14,67 +14,27 @@
 
 #include "traffic_light_recognition_node.hpp"
 
+#include "common/node_parameter_source.hpp"
+#include "recognition_config_builder.hpp"
+
 #include <memory>
-#include <string>
 #include <utility>
 
 namespace autoware::traffic_light
 {
 namespace
 {
-std::string joined(const std::string & prefix, const std::string & key)
-{
-  return prefix + "." + key;
-}
 
 // Declares this package's ROS 2 parameters on `node` and returns the resulting (flat)
 // TrafficLightRecognitionConfig the ROS-free TrafficLightRecognition core consumes. Declaring
-// parameters is a Node concern -- the core itself never touches rclcpp -- but this is a plain
-// read of the node's parameter tree and nothing else: every fixed (non-parameter) value the
-// underlying cores need (precision, mean/std, gpu_id, classify_traffic_light_type, the
-// map_based_detector calibration-error margins and range/angle cutoffs, ...) is filled in by
-// TrafficLightRecognition's constructor / build_engines() (traffic_light_recognition.cpp), not
-// here.
-//
-// model_path / label_path / roi_remap_path (per detector/classifier) are declared here as plain
-// top-level parameters, not part of the versioned config file (plan §5.1), so a launch file can
-// inject them without the config file ever hard-coding a $HOME/autoware_data path.
+// parameters is a Node concern -- the core itself never touches rclcpp -- and NodeParameterSource
+// is exactly that concern and nothing else: which parameter name fills which config field lives
+// in build_recognition_config() (recognition_config_builder.hpp), shared with the offline
+// evaluation tools and this package's tests so the three cannot drift apart.
 TrafficLightRecognitionConfig declare_recognition_config(rclcpp::Node * node)
 {
-  TrafficLightRecognitionConfig config;
-
-  config.whole_image_detector_model_path =
-    node->declare_parameter<std::string>("whole_image_detector.model_path");
-  config.whole_image_detector_label_path =
-    node->declare_parameter<std::string>("whole_image_detector.label_path");
-  config.whole_image_detector_roi_remap_path =
-    node->declare_parameter<std::string>("whole_image_detector.roi_remap_path", "");
-  config.whole_image_detector_score_threshold = static_cast<float>(
-    node->declare_parameter<double>(joined("whole_image_detector", "score_threshold")));
-  config.whole_image_detector_nms_threshold = static_cast<float>(
-    node->declare_parameter<double>(joined("whole_image_detector", "nms_threshold")));
-
-  config.min_timestamp_offset =
-    node->declare_parameter<double>(joined("map_based_detector", "min_timestamp_offset"));
-  config.max_timestamp_offset =
-    node->declare_parameter<double>(joined("map_based_detector", "max_timestamp_offset"));
-
-  config.car_classifier_model_path =
-    node->declare_parameter<std::string>("car_classifier.model_path");
-  config.car_classifier_label_path =
-    node->declare_parameter<std::string>("car_classifier.label_path");
-
-  config.pedestrian_classifier_model_path =
-    node->declare_parameter<std::string>("pedestrian_classifier.model_path");
-  config.pedestrian_classifier_label_path =
-    node->declare_parameter<std::string>("pedestrian_classifier.label_path");
-
-  config.over_exposure_threshold =
-    node->declare_parameter<double>(joined("classifier", "over_exposure_threshold"));
-  config.under_exposure_threshold =
-    node->declare_parameter<double>(joined("classifier", "under_exposure_threshold"));
-
-  return config;
+  NodeParameterSource source(node);
+  return build_recognition_config(source);
 }
 }  // namespace
 

@@ -14,10 +14,15 @@
 
 #include "evaluation_common.hpp"
 
+#include "common/package_config.hpp"
+#include "traffic_light_recognition/recognition_config_builder.hpp"
+
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <autoware/component_test_framework/parameter_loader.hpp>
 #include <autoware/image_transport_decompressor/image_decompression.hpp>
 #include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware/map_projection_loader/map_projection_loader.hpp>
+#include <rclcpp/parameter_value.hpp>
 #include <rclcpp/serialization.hpp>
 #include <rclcpp/serialized_message.hpp>
 #include <rclcpp/time.hpp>
@@ -48,7 +53,11 @@ namespace autoware::traffic_light::evaluation
 
 YAML::Node require(const YAML::Node & node, const std::string & key)
 {
-  return autoware::traffic_light::require(node, key, "evaluation config");
+  const auto child = node[key];
+  if (!child) {
+    throw std::runtime_error("evaluation config: missing required key '" + key + "'");
+  }
+  return child;
 }
 
 std::string expand_user_path(const std::string & path)
@@ -71,15 +80,6 @@ std::string require_path(const YAML::Node & node, const std::string & key)
 
 namespace
 {
-
-// This package's own front-end config -- the same file launch/traffic_light_recognition.launch.xml
-// feeds the Node -- is where every tuned value comes from; see load_evaluation_config().
-constexpr char kRecognitionParamFile[] = "traffic_light_recognition.param.yaml";
-
-YAML::Node require_param(const YAML::Node & node, const std::string & key)
-{
-  return autoware::traffic_light::require(node, key, kRecognitionParamFile);
-}
 
 // The whole-image detector ships this remap csv as installed package data, so unlike model_path /
 // label_path (which live under $HOME/autoware_data and vary per user) it does not belong in the
@@ -111,44 +111,41 @@ CameraConfig parse_camera(const YAML::Node & node)
   return camera;
 }
 
-TrafficLightRecognitionConfig parse_recognition(const YAML::Node & node, const YAML::Node & params)
+TrafficLightRecognitionConfig parse_recognition(const YAML::Node & node)
 {
-  TrafficLightRecognitionConfig config;
+  // The package config -- the same file the launch file passes the Node -- read with the same rcl
+  // yaml parser production uses.
+  autoware::component_test_framework::ParameterLoader loader;
+  loader.merge_yaml_file(package_config_path(kRecognitionParamFile));
 
-  // Model/label paths: evaluation yaml only. They live under the user's $HOME rather than in a
-  // package share directory, so they are a property of the machine the evaluation runs on, and are
-  // absent from the package config for the same reason (the launch file injects them too).
+  // The model/label paths are the one group the package config deliberately does not carry: they
+  // live under the user's $HOME, so production injects them as launch arguments. Here they come
+  // from the evaluation yaml and go in as overrides -- exactly what ParameterLoader::set_override()
+  // is for.
+  const auto override_path = [&loader](const std::string & name, const std::string & value) {
+    loader.set_override(name, rclcpp::ParameterValue(value));
+  };
+
   const auto detector = require(node, "whole_image_detector");
-  config.whole_image_detector_model_path = require_path(detector, "model_path");
-  config.whole_image_detector_label_path = require_path(detector, "label_path");
+  override_path("whole_image_detector.model_path", require_path(detector, "model_path"));
+  override_path("whole_image_detector.label_path", require_path(detector, "label_path"));
   const auto roi_remap_path_node = detector["roi_remap_path"];
-  config.whole_image_detector_roi_remap_path =
+  override_path(
+    "whole_image_detector.roi_remap_path",
     roi_remap_path_node && !roi_remap_path_node.as<std::string>().empty()
       ? expand_user_path(roi_remap_path_node.as<std::string>())
-      : default_roi_remap_path();
+      : default_roi_remap_path());
 
   const auto car = require(node, "car_classifier");
-  config.car_classifier_model_path = require_path(car, "model_path");
-  config.car_classifier_label_path = require_path(car, "label_path");
+  override_path("car_classifier.model_path", require_path(car, "model_path"));
+  override_path("car_classifier.label_path", require_path(car, "label_path"));
 
   const auto pedestrian = require(node, "pedestrian_classifier");
-  config.pedestrian_classifier_model_path = require_path(pedestrian, "model_path");
-  config.pedestrian_classifier_label_path = require_path(pedestrian, "label_path");
+  override_path("pedestrian_classifier.model_path", require_path(pedestrian, "model_path"));
+  override_path("pedestrian_classifier.label_path", require_path(pedestrian, "label_path"));
 
-  // Tuned values: package config only.
-  const auto detector_params = require_param(params, "whole_image_detector");
-  config.whole_image_detector_score_threshold =
-    require_param(detector_params, "score_threshold").as<float>();
-  config.whole_image_detector_nms_threshold =
-    require_param(detector_params, "nms_threshold").as<float>();
-
-  const auto classifier_params = require_param(params, "classifier");
-  config.over_exposure_threshold =
-    require_param(classifier_params, "over_exposure_threshold").as<double>();
-  config.under_exposure_threshold =
-    require_param(classifier_params, "under_exposure_threshold").as<double>();
-
-  return config;
+  // The same function TrafficLightRecognitionNode's declare_recognition_config() calls.
+  return build_recognition_config(loader);
 }
 
 EvaluationConfig load_evaluation_config(
@@ -160,23 +157,17 @@ EvaluationConfig load_evaluation_config(
   config.map_projector_info_path = dataset_path + "/map/map_projector_info.yaml";
 
   const auto root = YAML::LoadFile(config_path);
-  const auto params = load_package_param_yaml(kRecognitionParamFile);
-
-  const auto map_based_detector_params = require_param(params, "map_based_detector");
-  const auto min_timestamp_offset =
-    require_param(map_based_detector_params, "min_timestamp_offset").as<double>();
-  const auto max_timestamp_offset =
-    require_param(map_based_detector_params, "max_timestamp_offset").as<double>();
+  config.recognition = parse_recognition(require(root, "recognition"));
 
   for (const auto & camera : require(root, "cameras")) {
     config.cameras.push_back(parse_camera(camera));
-    config.cameras.back().min_timestamp_offset = min_timestamp_offset;
-    config.cameras.back().max_timestamp_offset = max_timestamp_offset;
+    // Every camera gets the package config's window; see CameraConfig.
+    config.cameras.back().min_timestamp_offset = config.recognition.min_timestamp_offset;
+    config.cameras.back().max_timestamp_offset = config.recognition.max_timestamp_offset;
   }
   if (config.cameras.empty()) {
     throw std::runtime_error("evaluation config: 'cameras' is empty");
   }
-  config.recognition = parse_recognition(require(root, "recognition"), params);
   return config;
 }
 

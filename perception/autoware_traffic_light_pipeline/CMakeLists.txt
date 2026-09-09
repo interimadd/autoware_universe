@@ -15,15 +15,18 @@ autoware_package()
 
 # --- shared config helpers ---------------------------------------------------------------------
 
-# Reading this package's own config/*.param.yaml outside of ROS's parameter machinery, so the
-# offline evaluation tools and the ROS-free core test use the deployed values instead of their own
-# hand-copied duplicates (src/common/config_yaml.hpp).
+# Locating this package's installed config/*.param.yaml (src/common/package_config.hpp). The
+# param-name -> config-field mapping itself lives in the header-only
+# src/traffic_light_recognition/recognition_config_builder.hpp and
+# src/traffic_light_fusion/fusion_config_builder.hpp, shared by the Nodes (via
+# src/common/node_parameter_source.hpp, which declares the parameters) and by the ROS-free callers
+# (via autoware_component_test_framework's ParameterLoader, which reads the same file with the same
+# rcl yaml parser).
 find_package(yaml-cpp REQUIRED)
 ament_auto_add_library(autoware_traffic_light_pipeline_config SHARED
-  src/common/config_yaml.cpp
+  src/common/package_config.cpp
 )
 target_include_directories(autoware_traffic_light_pipeline_config PUBLIC src)
-target_link_libraries(autoware_traffic_light_pipeline_config yaml-cpp)
 
 # --- front-end (traffic_light_recognition) ---------------------------------------------------
 
@@ -36,6 +39,7 @@ ament_auto_add_library(autoware_traffic_light_recognition SHARED
 ament_auto_add_library(autoware_traffic_light_recognition_node SHARED
   src/traffic_light_recognition/traffic_light_recognition_node.cpp
 )
+target_include_directories(autoware_traffic_light_recognition_node PRIVATE src)
 target_link_libraries(autoware_traffic_light_recognition_node autoware_traffic_light_recognition)
 
 rclcpp_components_register_node(autoware_traffic_light_recognition_node
@@ -53,6 +57,7 @@ ament_auto_add_library(autoware_traffic_light_fusion SHARED
 ament_auto_add_library(autoware_traffic_light_fusion_node SHARED
   src/traffic_light_fusion/traffic_light_fusion_node.cpp
 )
+target_include_directories(autoware_traffic_light_fusion_node PRIVATE src)
 target_link_libraries(autoware_traffic_light_fusion_node autoware_traffic_light_fusion)
 
 rclcpp_components_register_node(autoware_traffic_light_fusion_node
@@ -118,6 +123,18 @@ if(BUILD_TESTING)
   if(NVINFER AND NVONNXPARSER)
     set(TRT_AVAIL ON)
   endif()
+
+  # Cross-check that the Nodes' parameter path and the ROS-free ParameterLoader path build the
+  # same config from the same config/*.param.yaml (see the test's own header comment). Needs
+  # neither a GPU nor a model: it only builds config structs.
+  ament_add_ros_isolated_gtest(test_config_builders_cross_check
+    test/test_config_builders_cross_check.cpp
+  )
+  target_include_directories(test_config_builders_cross_check PRIVATE src)
+  target_link_libraries(test_config_builders_cross_check
+    autoware_traffic_light_recognition
+    autoware_traffic_light_fusion
+    autoware_traffic_light_pipeline_config)
 
   # ROS-free unit tests for the composed front-end core. GPU-gated (see comment above): the core's
   # constructor builds the whole-image detector's and both classifiers' TensorRT engines.

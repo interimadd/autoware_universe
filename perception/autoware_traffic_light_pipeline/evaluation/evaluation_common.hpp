@@ -22,7 +22,6 @@
 #ifndef PERCEPTION__AUTOWARE_TRAFFIC_LIGHT_PIPELINE__EVALUATION__EVALUATION_COMMON_HPP_
 #define PERCEPTION__AUTOWARE_TRAFFIC_LIGHT_PIPELINE__EVALUATION__EVALUATION_COMMON_HPP_
 
-#include "common/config_yaml.hpp"
 #include "traffic_light_recognition/traffic_light_recognition.hpp"
 
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
@@ -75,14 +74,16 @@ struct CameraConfig
   double max_timestamp_offset = 0.0;
 };
 
-// Parses one `cameras[]` entry. `map_based_detector_defaults` is the package config's
-// `map_based_detector:` group, used for whichever of the two offsets the entry does not override.
-CameraConfig parse_camera(const YAML::Node & node, const YAML::Node & map_based_detector_defaults);
+// Parses one `cameras[]` entry: its topics. min/max_timestamp_offset are filled in by
+// load_evaluation_config() from the package config, the same value for every camera.
+CameraConfig parse_camera(const YAML::Node & node);
 
-// Fills every TrafficLightRecognitionConfig field except min/max_timestamp_offset, which is per
-// camera (see CameraConfig). `node` is the evaluation yaml's `recognition:` section already
-// merged over config/traffic_light_recognition.param.yaml (see load_evaluation_config()), so it
-// carries the package's thresholds wherever the evaluation yaml stays silent.
+// Builds the TrafficLightRecognitionConfig for the run: loads
+// config/traffic_light_recognition.param.yaml into a ParameterLoader, applies the model/label
+// paths from `node` (the evaluation yaml's `recognition:` section) as overrides -- production
+// injects those same parameters from the launch file rather than from the config file -- and hands
+// the result to build_recognition_config(), the very function TrafficLightRecognitionNode builds
+// its own config with.
 TrafficLightRecognitionConfig parse_recognition(const YAML::Node & node);
 
 // The whole evaluation run: N cameras sharing one set of models/thresholds, over one dataset.
@@ -102,8 +103,9 @@ struct EvaluationConfig
 // Loads `config_path` and resolves the dataset-derived paths against `dataset_path`.
 //
 // Every tuned value comes from this package's own config/traffic_light_recognition.param.yaml --
-// the same file the launch files feed the Node -- and never from the evaluation yaml, which only
-// supplies what is inherently per-run: the camera list, topic names and model/label paths. An
+// the same file the launch files feed the Node, read with the same rcl yaml parser and turned into
+// a config by the same build_recognition_config() -- and never from the evaluation yaml, which
+// only supplies what is inherently per-run: the camera list, topic names and model/label paths. An
 // evaluation therefore always measures the deployed configuration; it cannot state a threshold of
 // its own and silently drift from what production uses.
 //

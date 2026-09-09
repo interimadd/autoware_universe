@@ -8,12 +8,11 @@ t4dataset のパスを指定すると、このパッケージの ROS 非依存�
 | `run_traffic_light_recognition_evaluation` | 前段（`TrafficLightRecognition`）のみ | カメラごとの `merged_signals` / `selected_rois`                                                                            |
 | `run_traffic_light_pipeline_evaluation`    | 前段 + 後段（`TrafficLightFusion`）   | 前段の出力に加え、`TrafficLightGroupArray`（本番の `/perception/traffic_light_recognition/internal/traffic_signals` 相当） |
 
-`autoware_traffic_light_component_test` の `run_traffic_light_pipeline` の移植です。以下は移植して
-いません。
-
-- `ParameterLoader` によるコンポーネント別 param.yaml のマージ
-  （`TrafficLightRecognitionConfig` / `TrafficLightFusionConfig` が既にフラットなので、評価用
-  yaml 1 枚に直接書く）
+`autoware_traffic_light_component_test` の `run_traffic_light_pipeline` の移植です。パラメータは
+同じく `ParameterLoader` でパッケージの `config/*.param.yaml` を読み、Node と共通の
+`build_recognition_config()` / `build_fusion_config()` に渡して config を組み立てます
+（コンポーネント別のマージは不要 — `TrafficLightRecognitionConfig` / `TrafficLightFusionConfig`
+が既にフラットなので、このパッケージの config ファイル 1 枚で足ります）。
 
 `rclcpp::init` / executor / DDS は一切使わず、コアライブラリと rosbag2 のみで動作します。
 
@@ -101,13 +100,16 @@ ros2 run autoware_traffic_light_pipeline run_traffic_light_pipeline_evaluation \
 `TrafficLightRecognition` インスタンスが 1 つ生成されます。
 
 **チューニング値はすべてパッケージの `config/traffic_light_recognition.param.yaml` /
-`config/traffic_light_fusion.param.yaml` から読みます**（launch ファイルが Node に渡すのと同じ
-ファイルを `load_package_param_yaml()` で直接読んでいます）。評価用 yaml 側から上書きすることは
+`config/traffic_light_fusion.param.yaml` から読みます**。launch ファイルが Node に渡すのと同じ
+ファイルを、production と同じ rcl の yaml パーサ（`ParameterLoader`）で読み、Node と同じ
+`build_recognition_config()` / `build_fusion_config()` に通すので、評価は必ず本番と同じ設定で
+走ります（一致は `test_config_builders_cross_check` で検証）。評価用 yaml 側から上書きすることは
 できません。評価用 yaml に書くのは
 
 - そのデータセット固有の情報（`cameras[]` のトピック名、`fusion.output_topic`）
 - ユーザーの `$HOME` 配下にある model_path / label_path（本番でも launch 側から注入されるため
-  `config/*.param.yaml` には存在しません）
+  `config/*.param.yaml` には存在しません。評価側では `ParameterLoader::set_override()` で
+  同じパラメータ名に流し込んでいます）
 
 の 2 つだけです。閾値は `config/` に 1 か所だけ存在するので、評価が本番と違う値を測ることが
 構造的に起きません。`map_based_detector.min/max_timestamp_offset` も同様で、
@@ -116,8 +118,8 @@ ros2 run autoware_traffic_light_pipeline run_traffic_light_pipeline_evaluation \
 `fusion:` セクションは `run_traffic_light_pipeline_evaluation` でのみ使用し、書けるのは
 `output_topic`（パッケージ config に対応する値がない、評価の出力先）だけです。
 `multi_camera_fusion.*` / `arbiter.*` は `config/traffic_light_fusion.param.yaml` から、
-`crosswalk_estimator` は `traffic_light_fusion_node.cpp` の `declare_fusion_config()` と同じ
-固定値をツール側でハードコードしたものが入ります（本番でも parameter 化されていない）。
+`crosswalk_estimator` は `build_fusion_config()` が持つ固定値が入ります（Node 側と同じコードなので
+定義は 1 か所だけです。本番でも parameter 化されていません）。
 
 model_path / label_path 類は本番（webauto CI）と同じ `/opt/autoware/mlmodels/` 配下の
 ML package 実体を指しています。**別の場所にある同じ `.onnx` に差し替えるときは注意が必要です**:

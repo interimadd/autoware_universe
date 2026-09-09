@@ -12,6 +12,7 @@
 
   <!-- 合成対象のコアロジック -->
   <depend>ament_index_cpp</depend>
+  <depend>autoware_component_test_framework</depend>
   <depend>autoware_crosswalk_traffic_light_estimator</depend>
   <depend>autoware_image_transport_decompressor</depend>
   <depend>autoware_lanelet2_utils</depend>
@@ -38,6 +39,9 @@
   <depend>tf2_ros</depend>
   <depend>tier4_perception_msgs</depend>
   <depend>yaml_cpp_vendor</depend>
+  <!-- ParameterLoader: reads a production param.yaml without an rclcpp::Node, so the offline
+       evaluation tools build their config from the same file, with the same rcl yaml parser and
+       the same build_*_config(), that the Nodes do. -->
 
   <!-- ROS / メッセージ -->
 

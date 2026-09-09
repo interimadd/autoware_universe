@@ -12,38 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "common/config_yaml.hpp"
+#include "common/package_config.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 
-#include <stdexcept>
 #include <string>
 
 namespace autoware::traffic_light
 {
 
-YAML::Node require(const YAML::Node & node, const std::string & key, const std::string & context)
-{
-  const auto child = node[key];
-  if (!child) {
-    throw std::runtime_error(context + ": missing required key '" + key + "'");
-  }
-  return child;
-}
-
 std::string package_config_path(const std::string & filename)
 {
   return ament_index_cpp::get_package_share_directory("autoware_traffic_light_pipeline") +
          "/config/" + filename;
-}
-
-YAML::Node load_package_param_yaml(const std::string & filename)
-{
-  const auto path = package_config_path(filename);
-  const auto root = YAML::LoadFile(path);
-  // Every config file in this package is wildcard-scoped (`/**:`), matching however the launch
-  // files name and namespace the Node.
-  return require(require(root, "/**", path), "ros__parameters", path);
 }
 
 }  // namespace autoware::traffic_light

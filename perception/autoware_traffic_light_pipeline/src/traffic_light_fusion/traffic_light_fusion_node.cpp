@@ -14,6 +14,9 @@
 
 #include "traffic_light_fusion_node.hpp"
 
+#include "common/node_parameter_source.hpp"
+#include "fusion_config_builder.hpp"
+
 #include <memory>
 #include <string>
 #include <utility>
@@ -25,64 +28,17 @@ namespace
 {
 
 // Declares this Node's ROS 2 parameters on `node` and returns the resulting
-// TrafficLightFusionConfig the ROS-free TrafficLightFusion core consumes. `multi_camera_fusion.*`
-// and `arbiter.*` are exposed as parameters, each under the prefix of the component it belongs to
-// (mirroring that component's own Node's parameter names) since one Node now carries what used to
-// be three Nodes' worth of configuration and a flat name could collide with a future one.
-// crosswalk_estimator's values are hardcoded here instead of declared: no deployment has ever
-// needed to change its behavior from its fixed defaults. `source_priority` is normalized here
-// exactly as TrafficLightArbiterNode normalizes it, so the core never has to guard against a typo.
-//
-// `camera_namespaces` is not part of the config struct: it selects which cameras this Node
-// subscribes to, which is Node I/O, not core configuration. It is read separately by the Node.
+// TrafficLightFusionConfig the ROS-free TrafficLightFusion core consumes. Which parameter name
+// fills which config field lives in build_fusion_config() (fusion_config_builder.hpp), shared with
+// run_traffic_light_pipeline_evaluation so the two cannot drift apart; NodeParameterSource is the
+// production half of that -- it declares the parameters, which is what keeps them visible to
+// launch, `ros2 param` and this package's json schema.
 TrafficLightFusionConfig declare_fusion_config(rclcpp::Node * node)
 {
-  TrafficLightFusionConfig config;
-
-  // These two are the ones MultiCameraFusionNode itself declares and every x2 deployment overrides
-  // (see config/traffic_light_fusion.param.yaml for why message_lifespan must exceed the camera
-  // period), so they are real parameters rather than hardcoded values.
-  config.multi_camera_fusion.message_lifespan =
-    node->declare_parameter<double>("multi_camera_fusion.message_lifespan");
-  config.multi_camera_fusion.prior_log_odds =
-    node->declare_parameter<double>("multi_camera_fusion.prior_log_odds");
-  // Not declared: MultiCameraFusionNode declares these two under `signal_consistency_check.*`, but
-  // no x2 param file sets either, so both keep the package default (disabled).
-  config.multi_camera_fusion.use_signal_consistency_check = false;
-  config.multi_camera_fusion.publish_partial_matched_signal = false;
-  // lanelet_map_ptr is deliberately left null: TrafficLightFusion's constructor fills it in from
-  // the LaneletMapBin the Node receives on ~/input/vector_map.
-
-  config.arbiter.external_delay_tolerance =
-    node->declare_parameter<double>("arbiter.external_delay_tolerance");
-  config.arbiter.external_time_tolerance =
-    node->declare_parameter<double>("arbiter.external_time_tolerance");
-  config.arbiter.perception_time_tolerance =
-    node->declare_parameter<double>("arbiter.perception_time_tolerance");
-  config.arbiter.enable_signal_matching =
-    node->declare_parameter<bool>("arbiter.enable_signal_matching");
-
-  // Same normalization TrafficLightArbiterNode does, for the same reason: the core treats every
-  // unknown value as "confidence" silently, so the typo is caught (and warned about) here.
-  auto source_priority = node->declare_parameter<std::string>("arbiter.source_priority");
-  if (
-    source_priority != "external" && source_priority != "perception" &&
-    source_priority != "confidence") {
-    RCLCPP_WARN(
-      node->get_logger(), "Unknown arbiter.source_priority '%s', defaulting to 'confidence'",
-      source_priority.c_str());
-    source_priority = "confidence";
-  }
-  config.arbiter.source_priority = source_priority;
-
-  // Fixed values, not parameters: these are autoware_crosswalk_traffic_light_estimator's own
-  // package defaults, and no deployment has ever needed to change them.
-  config.crosswalk_estimator.use_last_detect_color = true;
-  config.crosswalk_estimator.use_pedestrian_signal_detect = true;
-  config.crosswalk_estimator.last_detect_color_hold_time = 2.0;
-  config.crosswalk_estimator.flashing_detection.last_colors_hold_time = 1.0;
-
-  return config;
+  NodeParameterSource source(node);
+  return build_fusion_config(source, [node](const std::string & message) {
+    RCLCPP_WARN(node->get_logger(), "%s", message.c_str());
+  });
 }
 }  // namespace
 
