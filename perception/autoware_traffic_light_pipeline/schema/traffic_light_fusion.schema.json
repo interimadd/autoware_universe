@@ -41,7 +41,7 @@
         "source_priority": {
           "type": "string",
           "description": "Which source wins when perception and external disagree. Any value other than the three listed is normalized to 'confidence'.",
-          "default": "confidence",
+          "default": "perception",
           "enum": ["confidence", "external", "perception"]
         },
         "enable_signal_matching": {

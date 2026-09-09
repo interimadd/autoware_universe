@@ -28,6 +28,7 @@
 // from, so it is not re-verified here.
 //
 
+#include "../../src/common/config_yaml.hpp"
 #include "../../src/traffic_light_recognition/traffic_light_recognition.hpp"
 
 #include <autoware/cuda_utils/cuda_gtest_utils.hpp>
@@ -54,6 +55,16 @@ namespace
 namespace tl = autoware::traffic_light;
 
 constexpr char kCameraFrame[] = "camera_optical_link";
+
+// The tuned half of the config is read from this package's own config file -- the same one
+// launch/traffic_light_recognition.launch.xml feeds the Node -- rather than duplicated here, so
+// retuning a threshold cannot leave the test asserting against the old value.
+constexpr char kRecognitionParamFile[] = "traffic_light_recognition.param.yaml";
+
+YAML::Node require_param(const YAML::Node & node, const std::string & key)
+{
+  return tl::require(node, key, kRecognitionParamFile);
+}
 
 // --- autoware_data resolution (mirrors autoware_tensorrt_yolox / autoware_traffic_light_classifier
 // tests' resolve_autoware_data_file() helpers) -------------------------------------------------
@@ -184,15 +195,26 @@ protected:
     // Only the values actually supplied via ROS 2 parameters / launch arguments in production
     // (plan §5.1) are set here -- precision, mean/std, gpu_id, classify_traffic_light_type, the
     // map_based_detector calibration-error margins and range/angle cutoffs, etc. are fixed inside
-    // TrafficLightRecognition's constructor itself (traffic_light_recognition.cpp).
+    // TrafficLightRecognition's constructor itself (traffic_light_recognition.cpp). Of those, the
+    // thresholds/offsets come from the package config; the model and label paths do not, because
+    // they live under the user's $HOME and are injected per machine (see resolve_*_file() above).
+    const auto params = tl::load_package_param_yaml(kRecognitionParamFile);
+    const auto detector_params = require_param(params, "whole_image_detector");
+    const auto map_based_detector_params = require_param(params, "map_based_detector");
+    const auto classifier_params = require_param(params, "classifier");
+
     tl::TrafficLightRecognitionConfig config;
     config.whole_image_detector_model_path = yolox_model;
     config.whole_image_detector_label_path = yolox_label;
-    config.whole_image_detector_score_threshold = 0.35f;
-    config.whole_image_detector_nms_threshold = 0.7f;
+    config.whole_image_detector_score_threshold =
+      require_param(detector_params, "score_threshold").as<float>();
+    config.whole_image_detector_nms_threshold =
+      require_param(detector_params, "nms_threshold").as<float>();
 
-    config.min_timestamp_offset = -0.3;
-    config.max_timestamp_offset = 0.0;
+    config.min_timestamp_offset =
+      require_param(map_based_detector_params, "min_timestamp_offset").as<double>();
+    config.max_timestamp_offset =
+      require_param(map_based_detector_params, "max_timestamp_offset").as<double>();
 
     config.car_classifier_model_path = classifier_model;
     config.car_classifier_label_path = classifier_label;
@@ -200,8 +222,10 @@ protected:
     config.pedestrian_classifier_model_path = classifier_model;
     config.pedestrian_classifier_label_path = classifier_label;
 
-    config.over_exposure_threshold = 0.85;
-    config.under_exposure_threshold = -0.83;
+    config.over_exposure_threshold =
+      require_param(classifier_params, "over_exposure_threshold").as<double>();
+    config.under_exposure_threshold =
+      require_param(classifier_params, "under_exposure_threshold").as<double>();
 
     config_ = std::move(config);
     tf_buffer_ = make_tf_buffer_with_camera_transform();

@@ -13,6 +13,18 @@ autoware_package()
 # The library names are the component names rather than ${PROJECT_NAME}, since ${PROJECT_NAME}
 # now covers two independent compositions.
 
+# --- shared config helpers ---------------------------------------------------------------------
+
+# Reading this package's own config/*.param.yaml outside of ROS's parameter machinery, so the
+# offline evaluation tools and the ROS-free core test use the deployed values instead of their own
+# hand-copied duplicates (src/common/config_yaml.hpp).
+find_package(yaml-cpp REQUIRED)
+ament_auto_add_library(autoware_traffic_light_pipeline_config SHARED
+  src/common/config_yaml.cpp
+)
+target_include_directories(autoware_traffic_light_pipeline_config PUBLIC src)
+target_link_libraries(autoware_traffic_light_pipeline_config yaml-cpp)
+
 # --- front-end (traffic_light_recognition) ---------------------------------------------------
 
 # ROS 非依存の合成コア
@@ -54,12 +66,12 @@ rclcpp_components_register_node(autoware_traffic_light_fusion_node
 # （evaluation/README.md）。ROS ランタイム（rclcpp::init / executor / DDS）は使わず、コアライブラリ
 # と rosbag2 だけに依存する。yaml/rosbag 読み込みの共通部分は evaluation_common に切り出し、両方の
 # 実行ファイルで共有する。
-find_package(yaml-cpp REQUIRED)
 ament_auto_add_library(evaluation_common SHARED
   evaluation/evaluation_common.cpp
 )
 target_include_directories(evaluation_common PUBLIC src)
-target_link_libraries(evaluation_common autoware_traffic_light_recognition yaml-cpp)
+target_link_libraries(evaluation_common
+  autoware_traffic_light_recognition autoware_traffic_light_pipeline_config yaml-cpp)
 
 ament_auto_add_executable(run_traffic_light_recognition_evaluation
   evaluation/run_traffic_light_recognition_evaluation.cpp
@@ -114,7 +126,8 @@ if(BUILD_TESTING)
       test/traffic_light_recognition/test_traffic_light_recognition.cpp
       TIMEOUT 600
     )
-    target_link_libraries(test_traffic_light_recognition autoware_traffic_light_recognition)
+    target_link_libraries(test_traffic_light_recognition
+      autoware_traffic_light_recognition autoware_traffic_light_pipeline_config)
   endif()
 
   # Node pub/sub integration test. GPU-gated for the same reason as test_traffic_light_recognition.
@@ -125,7 +138,7 @@ if(BUILD_TESTING)
     )
     target_include_directories(test_traffic_light_recognition_integration PRIVATE src)
     target_link_libraries(test_traffic_light_recognition_integration
-      autoware_traffic_light_recognition_node)
+      autoware_traffic_light_recognition_node autoware_traffic_light_pipeline_config)
   endif()
 endif()
 

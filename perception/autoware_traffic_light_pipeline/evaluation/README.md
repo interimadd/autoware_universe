@@ -69,10 +69,10 @@ ros2 run autoware_traffic_light_pipeline run_traffic_light_pipeline_evaluation \
   混ざるかが変わり、融合色が変わることがあります。
   TLR_UC_001531_shiojiri_gen2_sunny_02 での実測（criteria_1 / criteria_2 / criteria_4）:
 
-  | pass B の投入順 | criteria_1 | criteria_2 | criteria_4 |
-  | --- | --- | --- | --- |
-  | camera4 先着固定（= 本ツールの投入順） | 23/26 = 88.46% | 34/34 = 100% | 762/762 = 100% |
-  | camera5 先着固定 | 22/26 = 84.62% | 34/34 = 100% | 762/762 = 100% |
+  | pass B の投入順                                | criteria_1     | criteria_2     | criteria_4       |
+  | ---------------------------------------------- | -------------- | -------------- | ---------------- |
+  | camera4 先着固定（= 本ツールの投入順）         | 23/26 = 88.46% | 34/34 = 100%   | 762/762 = 100%   |
+  | camera5 先着固定                               | 22/26 = 84.62% | 34/34 = 100%   | 762/762 = 100%   |
   | フルシステム実行の実順序（camera5 先が 40.9%） | 22/26 = 84.62% | 33/34 = 97.06% | 761/762 = 99.87% |
 
   フルシステム実行はどちらの固定順よりも悪い値になります（順序が途中で切り替わることで、
@@ -80,6 +80,7 @@ ros2 run autoware_traffic_light_pipeline run_traffic_light_pipeline_evaluation \
   再現できません**。厳密に突き合わせる必要が生じた場合は、本ツールにフラグを足すのではなく
   使い捨ての検証スクリプトで実行順を再生してください（component test 自体が特定の実行結果に
   依存しないようにするため）。
+
 - 各メッセージはヘッダスタンプの時刻で書き込むため、同じデータセットからは常に同じ bag が
   得られます（実行時刻には依存しません）。
 - 出力 bag のストレージ形式は入力 bag と同じものを自動で使います。
@@ -97,16 +98,26 @@ ros2 run autoware_traffic_light_pipeline run_traffic_light_pipeline_evaluation \
 ## 評価用 yaml
 
 `config/x2_v4.4.evaluation.yaml` を参照してください。`cameras[]` に 1 エントリ書くごとに
-`TrafficLightRecognition` インスタンスが 1 つ生成されます。`recognition:` 以下は全カメラ共通で、
-`config/traffic_light_recognition.param.yaml` と `launch/traffic_light_recognition.launch.xml`
-の値をそのまま持ってきたものです。カメラごとに変わるのは
-`map_based_detector.min/max_timestamp_offset` だけなので、そこだけ `cameras[]` 側にあります。
+`TrafficLightRecognition` インスタンスが 1 つ生成されます。
 
-`fusion:` セクションは `run_traffic_light_pipeline_evaluation` でのみ使用します。
+**チューニング値はすべてパッケージの `config/traffic_light_recognition.param.yaml` /
+`config/traffic_light_fusion.param.yaml` から読みます**（launch ファイルが Node に渡すのと同じ
+ファイルを `load_package_param_yaml()` で直接読んでいます）。評価用 yaml 側から上書きすることは
+できません。評価用 yaml に書くのは
+
+- そのデータセット固有の情報（`cameras[]` のトピック名、`fusion.output_topic`）
+- ユーザーの `$HOME` 配下にある model_path / label_path（本番でも launch 側から注入されるため
+  `config/*.param.yaml` には存在しません）
+
+の 2 つだけです。閾値は `config/` に 1 か所だけ存在するので、評価が本番と違う値を測ることが
+構造的に起きません。`map_based_detector.min/max_timestamp_offset` も同様で、
+`CameraConfig` はカメラごとに値を持ちますが、入るのは全カメラともパッケージ config の値です。
+
+`fusion:` セクションは `run_traffic_light_pipeline_evaluation` でのみ使用し、書けるのは
+`output_topic`（パッケージ config に対応する値がない、評価の出力先）だけです。
+`multi_camera_fusion.*` / `arbiter.*` は `config/traffic_light_fusion.param.yaml` から、
 `crosswalk_estimator` は `traffic_light_fusion_node.cpp` の `declare_fusion_config()` と同じ
-固定値をツール側でハードコードしており（本番でも parameter 化されていない）、yaml に書くのは
-parameter 化されている `multi_camera_fusion.*` / `arbiter.*` のみです
-（`config/traffic_light_fusion.param.yaml` と同値）。
+固定値をツール側でハードコードしたものが入ります（本番でも parameter 化されていない）。
 
 model_path / label_path 類は本番（webauto CI）と同じ `/opt/autoware/mlmodels/` 配下の
 ML package 実体を指しています。**別の場所にある同じ `.onnx` に差し替えるときは注意が必要です**:

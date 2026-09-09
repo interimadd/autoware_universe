@@ -5,6 +5,12 @@
 #     --config <this file> \
 #     --dataset <t4dataset dir> \
 #     --output-bag result/output_bag
+#
+# Every tuned value is read from this package's own config/traffic_light_recognition.param.yaml and
+# config/traffic_light_fusion.param.yaml -- the same files the launch files feed the two Nodes --
+# and cannot be set here. This file carries only what those cannot: which cameras/topics this
+# dataset has and where the models live. An evaluation therefore always measures the deployed
+# configuration.
 
 cameras:
   - namespace: camera4
@@ -13,11 +19,6 @@ cameras:
     output_topics:
       traffic_signals: /perception/traffic_light_recognition/camera4/classification/traffic_signals
       rois: /perception/traffic_light_recognition/camera4/detection/rois
-    map_based_detector:
-      # -0.04 instead of the upstream package default of -0.3, because every x2 camera overrides it
-      # in edge_auto_jetson_launch/launch/traffic_light_recognition/traffic_light_recognition.launch.xml.
-      min_timestamp_offset: -0.04
-      max_timestamp_offset: 0.0
 
   - namespace: camera5
     camera_info_topic: /sensing/camera/camera5/camera_info
@@ -25,20 +26,17 @@ cameras:
     output_topics:
       traffic_signals: /perception/traffic_light_recognition/camera5/classification/traffic_signals
       rois: /perception/traffic_light_recognition/camera5/detection/rois
-    map_based_detector:
-      # -0.04 instead of the upstream package default of -0.3, because every x2 camera overrides it
-      # in edge_auto_jetson_launch/launch/traffic_light_recognition/traffic_light_recognition.launch.xml.
-      min_timestamp_offset: -0.04
-      max_timestamp_offset: 0.0
 
+# Model/label paths only -- the thresholds come from config/traffic_light_recognition.param.yaml.
+# These paths live under the user's $HOME rather than in a package share directory, so they are a
+# property of the machine the evaluation runs on, not of the pipeline's tuning, and are
+# deliberately absent from that config file (the launch file injects them the same way).
 recognition:
   whole_image_detector:
     model_path: ~/autoware_data/tensorrt_yolox/yolox_s_car_ped_tl_detector_960_960_batch_1.onnx
     label_path: ~/autoware_data/tensorrt_yolox/car_ped_tl_detector_labels.txt
     # roi_remap_path is omitted, so it falls back to the traffic_light_roi_label_remap.csv installed
     # by autoware_tensorrt_yolox itself (see run_traffic_light_recognition_evaluation.cpp).
-    score_threshold: 0.35
-    nms_threshold: 0.7
 
   car_classifier:
     model_path: ~/autoware_data/traffic_light_classifier/traffic_light_classifier_mobilenetv2_batch_6.onnx
@@ -48,25 +46,8 @@ recognition:
     model_path: ~/autoware_data/traffic_light_classifier/ped_traffic_light_classifier_mobilenetv2_batch_6.onnx
     label_path: ~/autoware_data/traffic_light_classifier/lamp_labels_ped.txt
 
-  classifier:
-    over_exposure_threshold: 0.85
-    under_exposure_threshold: -0.83
-
 fusion:
+  # The one back-end setting that has no package default: where the evaluation writes the fused
+  # result. Everything else (multi_camera_fusion.*, arbiter.*) comes from
+  # config/traffic_light_fusion.param.yaml.
   output_topic: /perception/traffic_light_recognition/internal/traffic_signals
-
-  multi_camera_fusion:
-    # Taken from autoware_launch/config/perception/traffic_light_recognition/
-    # traffic_light_multi_camera_fusion/*.param.yaml.
-    # Although the default value is 0.09, it has to be larger than the 0.1 s camera period; otherwise
-    # the recognition results of the other cameras always expire and are never taken into account.
-    message_lifespan: 0.12
-    prior_log_odds: 0.0
-
-  arbiter:
-    external_delay_tolerance: 5.0
-    external_time_tolerance: 5.0
-    perception_time_tolerance: 1.0
-    source_priority: perception
-    enable_signal_matching: false
-    prioritize_internal_signals_when_arrows_present: true

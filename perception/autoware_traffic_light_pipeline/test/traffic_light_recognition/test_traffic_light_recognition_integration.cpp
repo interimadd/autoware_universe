@@ -24,6 +24,7 @@
 // additionally gated in CMakeLists.txt behind TRT_AVAIL AND CUDA_AVAIL.
 //
 
+#include "../../src/common/config_yaml.hpp"
 #include "../../src/traffic_light_recognition/traffic_light_recognition_node.hpp"
 
 #include <autoware/cuda_utils/cuda_gtest_utils.hpp>
@@ -133,28 +134,22 @@ RequiredData resolve_required_data()
   return data;
 }
 
+// Stands the Node up on this package's own config file -- the very one
+// launch/traffic_light_recognition.launch.xml passes it -- so the integration test exercises the
+// deployed parameter values instead of a hand-copied duplicate of them. Only the model/label
+// paths are passed as individual overrides: they live under the user's $HOME, so they are absent
+// from the config file by design and the launch file injects them separately too. They come after
+// --params-file, which is what makes them win.
 rclcpp::NodeOptions make_node_options(const RequiredData & data)
 {
   std::vector<std::string> args{
     "--ros-args",
-    "-p",
-    "build_only:=false",
-    "-p",
-    "whole_image_detector.score_threshold:=0.35",
-    "-p",
-    "whole_image_detector.nms_threshold:=0.7",
+    "--params-file",
+    tl::package_config_path("traffic_light_recognition.param.yaml"),
     "-p",
     "whole_image_detector.model_path:=" + data.yolox_model,
     "-p",
     "whole_image_detector.label_path:=" + data.yolox_label,
-    "-p",
-    "map_based_detector.min_timestamp_offset:=-0.3",
-    "-p",
-    "map_based_detector.max_timestamp_offset:=0.0",
-    "-p",
-    "classifier.over_exposure_threshold:=0.85",
-    "-p",
-    "classifier.under_exposure_threshold:=-0.83",
     "-p",
     "car_classifier.model_path:=" + data.classifier_model,
     "-p",

@@ -22,6 +22,7 @@
 #ifndef PERCEPTION__AUTOWARE_TRAFFIC_LIGHT_PIPELINE__EVALUATION__EVALUATION_COMMON_HPP_
 #define PERCEPTION__AUTOWARE_TRAFFIC_LIGHT_PIPELINE__EVALUATION__EVALUATION_COMMON_HPP_
 
+#include "common/config_yaml.hpp"
 #include "traffic_light_recognition/traffic_light_recognition.hpp"
 
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
@@ -43,7 +44,8 @@ namespace autoware::traffic_light::evaluation
 
 // --- yaml helpers -------------------------------------------------------------------------------
 
-// Returns `node[key]`, throwing if it is missing -- every evaluation config field is required.
+// Returns `node[key]`, throwing if it is missing -- an evaluation config field that has no default
+// in the package config (see load_evaluation_config()) is required.
 YAML::Node require(const YAML::Node & node, const std::string & key);
 
 // Expands a leading "~" to $HOME, the same convention the shell and ROS2 launch's $(env HOME)
@@ -58,8 +60,10 @@ std::string require_path(const YAML::Node & node, const std::string & key);
 // --- evaluation config (yaml) --------------------------------------------------------------------
 
 // One camera's worth of evaluation configuration: which topics it is read from, which topics its
-// front-end results are written to, and the one part of TrafficLightRecognitionConfig that
-// legitimately differs per camera (the map->camera tf sampling window).
+// front-end results are written to, and the map->camera tf sampling window each camera's
+// TrafficLightRecognition instance is built with. The window is per camera because the instances
+// are, not because the evaluation yaml can vary it -- load_evaluation_config() fills every camera's
+// from the same package config values.
 struct CameraConfig
 {
   std::string ns;
@@ -71,11 +75,14 @@ struct CameraConfig
   double max_timestamp_offset = 0.0;
 };
 
-// Parses one `cameras[]` entry.
-CameraConfig parse_camera(const YAML::Node & node);
+// Parses one `cameras[]` entry. `map_based_detector_defaults` is the package config's
+// `map_based_detector:` group, used for whichever of the two offsets the entry does not override.
+CameraConfig parse_camera(const YAML::Node & node, const YAML::Node & map_based_detector_defaults);
 
 // Fills every TrafficLightRecognitionConfig field except min/max_timestamp_offset, which is per
-// camera (see CameraConfig), from the evaluation yaml's `recognition:` section.
+// camera (see CameraConfig). `node` is the evaluation yaml's `recognition:` section already
+// merged over config/traffic_light_recognition.param.yaml (see load_evaluation_config()), so it
+// carries the package's thresholds wherever the evaluation yaml stays silent.
 TrafficLightRecognitionConfig parse_recognition(const YAML::Node & node);
 
 // The whole evaluation run: N cameras sharing one set of models/thresholds, over one dataset.
@@ -92,9 +99,17 @@ struct EvaluationConfig
   TrafficLightRecognitionConfig recognition;
 };
 
-// Loads `config_path` and resolves the dataset-derived paths against `dataset_path`. Does not
-// parse a `fusion:` section -- callers that need the back-end config parse it themselves from the
-// same root node (see run_traffic_light_pipeline_evaluation.cpp).
+// Loads `config_path` and resolves the dataset-derived paths against `dataset_path`.
+//
+// Every tuned value comes from this package's own config/traffic_light_recognition.param.yaml --
+// the same file the launch files feed the Node -- and never from the evaluation yaml, which only
+// supplies what is inherently per-run: the camera list, topic names and model/label paths. An
+// evaluation therefore always measures the deployed configuration; it cannot state a threshold of
+// its own and silently drift from what production uses.
+//
+// Does not parse a `fusion:` section -- callers that need the back-end config parse it themselves
+// from the same root node, reading config/traffic_light_fusion.param.yaml the same way (see
+// run_traffic_light_pipeline_evaluation.cpp).
 EvaluationConfig load_evaluation_config(
   const std::string & config_path, const std::string & dataset_path);
 
