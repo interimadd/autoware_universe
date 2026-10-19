@@ -14,7 +14,7 @@
 
 #include "ament_index_cpp/get_package_share_directory.hpp"
 #include "autoware/fake_test_node/fake_test_node.hpp"
-#include "autoware/trajectory_follower_node/controller_node.hpp"
+#include "autoware/trajectory_follower_node/trajectory_follower_node.hpp"
 #include "gtest/gtest.h"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp/time.hpp"
@@ -34,7 +34,8 @@
 #include <memory>
 #include <vector>
 
-using Controller = autoware::motion::control::trajectory_follower_node::Controller;
+using TrajectoryFollowerNode =
+  autoware::motion::control::trajectory_follower_node::TrajectoryFollowerNode;
 using Control = autoware_control_msgs::msg::Control;
 using Trajectory = autoware_planning_msgs::msg::Trajectory;
 using TrajectoryPoint = autoware_planning_msgs::msg::TrajectoryPoint;
@@ -75,9 +76,10 @@ rclcpp::NodeOptions makeNodeOptions(const bool enable_keep_stopped_until_steer_c
   return node_options;
 }
 
-std::shared_ptr<Controller> makeNode(const rclcpp::NodeOptions & node_options)
+std::shared_ptr<TrajectoryFollowerNode> makeNode(const rclcpp::NodeOptions & node_options)
 {
-  std::shared_ptr<Controller> node = std::make_shared<Controller>(node_options);
+  std::shared_ptr<TrajectoryFollowerNode> node =
+    std::make_shared<TrajectoryFollowerNode>(node_options);
 
   // Enable all logging in the node
   auto ret =
@@ -97,7 +99,7 @@ public:
   }
 
   FakeNodeFixture * fnf;
-  std::shared_ptr<Controller> node;
+  std::shared_ptr<TrajectoryFollowerNode> node;
 
   Control::SharedPtr cmd_msg;
   bool received_control_command = false;

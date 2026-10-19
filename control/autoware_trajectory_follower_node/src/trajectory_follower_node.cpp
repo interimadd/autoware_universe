@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/trajectory_follower_node/controller_node.hpp"
+#include "autoware/trajectory_follower_node/trajectory_follower_node.hpp"
 
 #include "autoware/trajectory_follower_node/create_config.hpp"
 #include "autoware/trajectory_follower_node/ros_controller_factory.hpp"
@@ -26,7 +26,7 @@
 
 namespace autoware::motion::control::trajectory_follower_node
 {
-Controller::Controller(const rclcpp::NodeOptions & node_options)
+TrajectoryFollowerNode::TrajectoryFollowerNode(const rclcpp::NodeOptions & node_options)
 : Node("controller", node_options),
   diag_updater_(std::make_shared<diagnostic_updater::Updater>(this))
 {
@@ -35,7 +35,8 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
   enable_control_cmd_horizon_pub_ = config.enable_control_cmd_horizon;
 
   diag_updater_->setHardwareID("trajectory_follower_node");
-  diag_updater_->add("incoming_message_timeout", this, &Controller::check_cyclic_message_timeout);
+  diag_updater_->add(
+    "incoming_message_timeout", this, &TrajectoryFollowerNode::check_cyclic_message_timeout);
 
   trajectory_follower_ = std::make_unique<TrajectoryFollower>(
     config, createLateralController(config, *this, diag_updater_),
@@ -67,7 +68,7 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
     const auto period_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::duration<double>(config.ctrl_period));
     timer_control_ = rclcpp::create_timer(
-      this, get_clock(), period_ns, std::bind(&Controller::callbackTimerControl, this));
+      this, get_clock(), period_ns, std::bind(&TrajectoryFollowerNode::callbackTimerControl, this));
   }
 
   logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
@@ -75,7 +76,8 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
   published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
 }
 
-void Controller::check_cyclic_message_timeout(diagnostic_updater::DiagnosticStatusWrapper & stat)
+void TrajectoryFollowerNode::check_cyclic_message_timeout(
+  diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
   const auto traj_timestamp = sub_ref_path_.last_taken_data_timestamp();
 
@@ -95,7 +97,7 @@ void Controller::check_cyclic_message_timeout(diagnostic_updater::DiagnosticStat
   }
 }
 
-bool Controller::processData(rclcpp::Clock & clock)
+bool TrajectoryFollowerNode::processData(rclcpp::Clock & clock)
 {
   bool is_ready = true;
 
@@ -123,7 +125,7 @@ bool Controller::processData(rclcpp::Clock & clock)
   return is_ready;
 }
 
-std::optional<InputData> Controller::createInputData(rclcpp::Clock & clock)
+std::optional<InputData> TrajectoryFollowerNode::createInputData(rclcpp::Clock & clock)
 {
   if (!processData(clock)) {
     return {};
@@ -140,7 +142,7 @@ std::optional<InputData> Controller::createInputData(rclcpp::Clock & clock)
   return input_data;
 }
 
-void Controller::callbackTimerControl()
+void TrajectoryFollowerNode::callbackTimerControl()
 {
   const auto stamp = this->now();
 
@@ -185,7 +187,7 @@ void Controller::callbackTimerControl()
   }
 }
 
-void Controller::publishDebugMarker(
+void TrajectoryFollowerNode::publishDebugMarker(
   const InputData & input_data, const TrajectoryFollowerResult & result) const
 {
   visualization_msgs::msg::MarkerArray debug_marker_array{};
@@ -212,7 +214,7 @@ void Controller::publishDebugMarker(
   debug_marker_pub_->publish(debug_marker_array);
 }
 
-void Controller::publishProcessingTime(
+void TrajectoryFollowerNode::publishProcessingTime(
   const double t_ms, const rclcpp::Publisher<Float64Stamped>::SharedPtr pub)
 {
   Float64Stamped msg{};
@@ -224,4 +226,5 @@ void Controller::publishProcessingTime(
 }  // namespace autoware::motion::control::trajectory_follower_node
 
 #include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE(autoware::motion::control::trajectory_follower_node::Controller)
+RCLCPP_COMPONENTS_REGISTER_NODE(
+  autoware::motion::control::trajectory_follower_node::TrajectoryFollowerNode)

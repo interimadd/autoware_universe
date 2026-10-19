@@ -4,6 +4,8 @@ project(autoware_trajectory_follower_node)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+# The CMake target keeps its name, so that the executable and the topic paths that
+# carry the node name do not change.
 set(CONTROLLER_NODE controller_node)
 # Core logic: no node, no topics, no parameters. An offline evaluation links only this.
 set(TRAJECTORY_FOLLOWER trajectory_follower)
@@ -14,14 +16,14 @@ ament_auto_add_library(${TRAJECTORY_FOLLOWER} SHARED
 )
 
 ament_auto_add_library(${CONTROLLER_NODE} SHARED
-  src/controller_node.cpp
+  src/trajectory_follower_node.cpp
   src/create_config.cpp
   src/ros_controller_factory.cpp
 )
 target_link_libraries(${CONTROLLER_NODE} ${TRAJECTORY_FOLLOWER})
 
 autoware_agnocast_wrapper_register_node(${CONTROLLER_NODE}
-  PLUGIN "autoware::motion::control::trajectory_follower_node::Controller"
+  PLUGIN "autoware::motion::control::trajectory_follower_node::TrajectoryFollowerNode"
   EXECUTABLE ${CONTROLLER_NODE}_exe
   AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
   ROS2_EXECUTOR SingleThreadedExecutor
@@ -51,7 +53,7 @@ if(BUILD_TESTING)
   set(TRAJECTORY_FOLLOWER_NODES_TEST test_trajectory_follower_node)
   ament_add_ros_isolated_gtest(${TRAJECTORY_FOLLOWER_NODES_TEST}
     test/trajectory_follower_test_utils.hpp
-    test/test_controller_node.cpp
+    test/test_trajectory_follower_node.cpp
   )
   ament_target_dependencies(${TRAJECTORY_FOLLOWER_NODES_TEST} autoware_fake_test_node ament_index_cpp)
   target_link_libraries(

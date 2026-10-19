@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_FOLLOWER_NODE__CONTROLLER_NODE_HPP_
-#define AUTOWARE__TRAJECTORY_FOLLOWER_NODE__CONTROLLER_NODE_HPP_
+#ifndef AUTOWARE__TRAJECTORY_FOLLOWER_NODE__TRAJECTORY_FOLLOWER_NODE_HPP_
+#define AUTOWARE__TRAJECTORY_FOLLOWER_NODE__TRAJECTORY_FOLLOWER_NODE_HPP_
 
 #include "autoware/trajectory_follower_node/trajectory_follower.hpp"
 #include "autoware/trajectory_follower_node/visibility_control.hpp"
@@ -41,14 +41,14 @@ namespace autoware::motion::control::trajectory_follower_node
 using autoware_adapi_v1_msgs::msg::OperationModeState;
 using autoware_internal_debug_msgs::msg::Float64Stamped;
 
-/// \classController
+/// \class TrajectoryFollowerNode
 /// \brief Drives a TrajectoryFollower from the topics of ROS 2. It takes the input
 /// messages, hands them to the follower once per control period, and publishes what the
 /// follower returned.
-class TRAJECTORY_FOLLOWER_PUBLIC Controller : public rclcpp::Node
+class TRAJECTORY_FOLLOWER_PUBLIC TrajectoryFollowerNode : public rclcpp::Node
 {
 public:
-  explicit Controller(const rclcpp::NodeOptions & node_options);
+  explicit TrajectoryFollowerNode(const rclcpp::NodeOptions & node_options);
 
 private:
   rclcpp::TimerBase::SharedPtr timer_control_;
@@ -114,4 +114,4 @@ private:
 };
 }  // namespace autoware::motion::control::trajectory_follower_node
 
-#endif  // AUTOWARE__TRAJECTORY_FOLLOWER_NODE__CONTROLLER_NODE_HPP_
+#endif  // AUTOWARE__TRAJECTORY_FOLLOWER_NODE__TRAJECTORY_FOLLOWER_NODE_HPP_
