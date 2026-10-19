@@ -31,7 +31,6 @@ struct LongitudinalOutput
 {
   Longitudinal control_cmd;
   LongitudinalHorizon control_cmd_horizon;
-  LongitudinalSyncData sync_data;
 };
 class LongitudinalControllerBase
 {
