@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__TRAJECTORY_FOLLOWER_NODE__TRAJECTORY_FOLLOWER_NODE_HPP_
 #define AUTOWARE__TRAJECTORY_FOLLOWER_NODE__TRAJECTORY_FOLLOWER_NODE_HPP_
 
-#include "autoware/trajectory_follower_node/controller_io.hpp"
+#include "autoware/trajectory_follower_node/controller_factory.hpp"
 #include "autoware/trajectory_follower_node/ros_log_writer.hpp"
 #include "autoware/trajectory_follower_node/trajectory_follower.hpp"
 #include "autoware/trajectory_follower_node/visibility_control.hpp"
@@ -30,19 +30,27 @@
 #include "autoware_control_msgs/msg/control_horizon.hpp"
 #include "autoware_planning_msgs/msg/trajectory.hpp"
 #include "geometry_msgs/msg/accel_with_covariance_stamped.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
+#include <autoware_internal_debug_msgs/msg/float32_multi_array_stamped.hpp>
 #include <autoware_internal_debug_msgs/msg/float32_stamped.hpp>
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace autoware::motion::control::trajectory_follower_node
 {
 using autoware_adapi_v1_msgs::msg::OperationModeState;
+using autoware_internal_debug_msgs::msg::Float32MultiArrayStamped;
+using autoware_internal_debug_msgs::msg::Float32Stamped;
 using autoware_internal_debug_msgs::msg::Float64Stamped;
+using autoware_planning_msgs::msg::Trajectory;
+using geometry_msgs::msg::PoseStamped;
+using visualization_msgs::msg::MarkerArray;
 
 /// \class TrajectoryFollowerNode
 /// \brief Drives a TrajectoryFollower from the topics of ROS 2. It takes the input
@@ -66,9 +74,16 @@ private:
 
   std::unique_ptr<TrajectoryFollower> trajectory_follower_;
 
-  /// The ROS side of the two controllers: their topics, logs, diagnostics and runtime
-  /// parameters. The controllers themselves know none of this.
-  std::vector<std::unique_ptr<ControllerIo>> controller_io_;
+  /// Views of the controllers the follower owns, for the kinds this node was configured
+  /// with. Null for every other kind. The controllers read no parameter and write no
+  /// topic; everything below does that for them.
+  mpc_lateral_controller::MpcLateralController * mpc_{nullptr};
+  pure_pursuit::PurePursuitLateralController * pure_pursuit_{nullptr};
+  pid_longitudinal_controller::PidLongitudinalController * pid_{nullptr};
+
+  /// The config the controllers were built with. A parameter update changes it field by
+  /// field and hands it back to the controller it belongs to.
+  TrajectoryFollowerConfig config_;
 
   // Subscribers
   autoware_utils::InterProcessPollingSubscriber<autoware_planning_msgs::msg::Trajectory>
@@ -96,6 +111,26 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_marker_pub_;
   rclcpp::Publisher<autoware_control_msgs::msg::ControlHorizon>::SharedPtr control_cmd_horizon_pub_;
 
+  // Publishers of the MPC lateral controller
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_mpc_predicted_traj_;
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_mpc_predicted_traj_frenet_;
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_mpc_resampled_reference_traj_;
+  rclcpp::Publisher<PoseStamped>::SharedPtr pub_mpc_nearest_pose_;
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_mpc_nearest_segment_traj_;
+  rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr pub_mpc_nearest_info_;
+  rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr pub_mpc_debug_values_;
+  rclcpp::Publisher<Float32Stamped>::SharedPtr pub_mpc_steer_offset_;
+
+  // Publishers of the pure pursuit lateral controller
+  rclcpp::Publisher<MarkerArray>::SharedPtr pub_pure_pursuit_debug_marker_;
+  rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr pub_pure_pursuit_debug_values_;
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_pure_pursuit_predicted_traj_;
+
+  // Publishers of the PID longitudinal controller
+  rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr pub_pid_slope_;
+  rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr pub_pid_debug_;
+  rclcpp::Publisher<MarkerArray>::SharedPtr pub_pid_virtual_wall_marker_;
+
   autoware_planning_msgs::msg::Trajectory::ConstSharedPtr current_trajectory_ptr_;
   nav_msgs::msg::Odometry::ConstSharedPtr current_odometry_ptr_;
   autoware_vehicle_msgs::msg::SteeringReport::ConstSharedPtr current_steering_ptr_;
@@ -114,6 +149,26 @@ private:
 
   void publishDebugMarker(
     const InputData & input_data, const TrajectoryFollowerResult & result) const;
+
+  /// Create the topics of the controllers this node was configured with, and register
+  /// their diagnostics.
+  void setupControllerTopics();
+
+  /// Write out and log everything the controllers produced during the last cycle.
+  void publishControllerOutput();
+
+  /// Hand a changed parameter to the controller it belongs to.
+  rcl_interfaces::msg::SetParametersResult paramCallback(
+    const std::vector<rclcpp::Parameter> & parameters);
+
+  void checkMpcSolve(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  void checkControlState(diagnostic_updater::DiagnosticStatusWrapper & stat);
+
+  /// The control state of the last PID cycle, which its diagnostic reports.
+  pid_longitudinal_controller::ControlState pid_control_state_{
+    pid_longitudinal_controller::ControlState::STOPPED};
+
+  rclcpp::Node::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
   void publishProcessingTime(
     const double t_ms, const rclcpp::Publisher<Float64Stamped>::SharedPtr pub);
 

@@ -18,13 +18,8 @@ ament_auto_add_library(${TRAJECTORY_FOLLOWER} SHARED
 ament_auto_add_library(${CONTROLLER_NODE} SHARED
   src/trajectory_follower_node.cpp
   src/create_config.cpp
-  src/ros_controller_factory.cpp
   src/ros_log_writer.cpp
-  src/io/mpc_io.cpp
-  src/io/pid_io.cpp
-  src/io/pure_pursuit_io.cpp
 )
-target_include_directories(${CONTROLLER_NODE} PRIVATE src)
 target_link_libraries(${CONTROLLER_NODE} ${TRAJECTORY_FOLLOWER})
 
 autoware_agnocast_wrapper_register_node(${CONTROLLER_NODE}

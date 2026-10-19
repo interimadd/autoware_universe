@@ -15,30 +15,46 @@
 #include "autoware/trajectory_follower_node/controller_factory.hpp"
 
 #include <memory>
+#include <utility>
 
 namespace autoware::motion::control::trajectory_follower_node
 {
-std::unique_ptr<trajectory_follower::LateralController> createLateralController(
-  const TrajectoryFollowerConfig & config)
+LateralControllerHandle createLateralController(
+  const TrajectoryFollowerConfig & config, const mpc_lateral_controller::LogWriter & writer)
 {
+  LateralControllerHandle handle;
   switch (config.lateral_controller_kind) {
-    case LateralControllerKind::Mpc:
-      return std::make_unique<mpc_lateral_controller::MpcLateralController>(
-        config.mpc, mpc_lateral_controller::no_log);
-    case LateralControllerKind::PurePursuit:
-      return std::make_unique<pure_pursuit::PurePursuitLateralController>(config.pure_pursuit);
+    case LateralControllerKind::Mpc: {
+      auto controller =
+        std::make_unique<mpc_lateral_controller::MpcLateralController>(config.mpc, writer);
+      handle.mpc = controller.get();
+      handle.controller = std::move(controller);
+      break;
+    }
+    case LateralControllerKind::PurePursuit: {
+      auto controller =
+        std::make_unique<pure_pursuit::PurePursuitLateralController>(config.pure_pursuit);
+      handle.pure_pursuit = controller.get();
+      handle.controller = std::move(controller);
+      break;
+    }
   }
-  return nullptr;
+  return handle;
 }
 
-std::unique_ptr<trajectory_follower::LongitudinalController> createLongitudinalController(
-  const TrajectoryFollowerConfig & config)
+LongitudinalControllerHandle createLongitudinalController(const TrajectoryFollowerConfig & config)
 {
+  LongitudinalControllerHandle handle;
   switch (config.longitudinal_controller_kind) {
-    case LongitudinalControllerKind::Pid:
-      return std::make_unique<pid_longitudinal_controller::PidLongitudinalController>(config.pid);
+    case LongitudinalControllerKind::Pid: {
+      auto controller =
+        std::make_unique<pid_longitudinal_controller::PidLongitudinalController>(config.pid);
+      handle.pid = controller.get();
+      handle.controller = std::move(controller);
+      break;
+    }
   }
-  return nullptr;
+  return handle;
 }
 
 }  // namespace autoware::motion::control::trajectory_follower_node

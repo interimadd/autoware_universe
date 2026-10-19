@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__TRAJECTORY_FOLLOWER_NODE__CONTROLLER_FACTORY_HPP_
 #define AUTOWARE__TRAJECTORY_FOLLOWER_NODE__CONTROLLER_FACTORY_HPP_
 
+#include "autoware/mpc_lateral_controller/log_writer.hpp"
 #include "autoware/trajectory_follower_base/lateral_controller.hpp"
 #include "autoware/trajectory_follower_base/longitudinal_controller.hpp"
 #include "autoware/trajectory_follower_node/trajectory_follower_config.hpp"
@@ -23,14 +24,31 @@
 
 namespace autoware::motion::control::trajectory_follower_node
 {
-/// Build the lateral controller the config names, with nothing of ROS attached to it. The
-/// controller writes no log and publishes nothing, so a caller outside ROS 2 can use it.
-std::unique_ptr<trajectory_follower::LateralController> createLateralController(
-  const TrajectoryFollowerConfig & config);
+/// The lateral controller a config names. `controller` owns it; the pointer that matches
+/// the chosen kind views the same object and is null for every other kind. The node reads
+/// that pointer to publish what the controller produced and to update its parameters,
+/// which it can only do for the kind it knows.
+struct LateralControllerHandle
+{
+  std::unique_ptr<trajectory_follower::LateralController> controller;
+  mpc_lateral_controller::MpcLateralController * mpc{nullptr};
+  pure_pursuit::PurePursuitLateralController * pure_pursuit{nullptr};
+};
 
-/// Build the longitudinal controller the config names, with nothing of ROS attached to it.
-std::unique_ptr<trajectory_follower::LongitudinalController> createLongitudinalController(
-  const TrajectoryFollowerConfig & config);
+struct LongitudinalControllerHandle
+{
+  std::unique_ptr<trajectory_follower::LongitudinalController> controller;
+  pid_longitudinal_controller::PidLongitudinalController * pid{nullptr};
+};
+
+/// \param writer Where a controller reports what it meets. It has to outlive the
+///        controller. The default drops every line, which is what a caller outside ROS 2
+///        wants.
+LateralControllerHandle createLateralController(
+  const TrajectoryFollowerConfig & config,
+  const mpc_lateral_controller::LogWriter & writer = mpc_lateral_controller::no_log);
+
+LongitudinalControllerHandle createLongitudinalController(const TrajectoryFollowerConfig & config);
 
 }  // namespace autoware::motion::control::trajectory_follower_node
 
