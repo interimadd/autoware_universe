@@ -6,7 +6,7 @@ Generate control commands to follow a given Trajectory.
 
 ## Design
 
-This is a node of the functionalities implemented in the controller class derived from [autoware_trajectory_follower_base](../autoware_trajectory_follower_base/README.md#trajectory-follower) package. It has instances of those functionalities, gives them input data to perform calculations, and publishes control commands.
+This is a node of the functionalities implemented in the lateral controller class derived from the [autoware_trajectory_follower_base](../autoware_trajectory_follower_base/README.md#trajectory-follower) package, and in the longitudinal controller class of the [autoware_pid_longitudinal_controller](../autoware_pid_longitudinal_controller/README.md) package. It has instances of those functionalities, gives them input data to perform calculations, and publishes control commands.
 
 By default, the controller instance with the `Controller` class as follows is used.
 
@@ -16,15 +16,6 @@ package autoware_trajectory_follower_base {
 abstract class LateralControllerBase {
 virtual isReady(InputData)
 virtual run(InputData)
-}
-abstract class LongitudinalControllerBase {
-lateral_sync_data_
-
-    virtual isReady(InputData)
-    virtual run(InputData)
-    sync(LateralSyncData)
-    reset()
-
 }
 
 struct InputData {
@@ -51,9 +42,8 @@ run(InputData) override
 }
 }
 package pid_longitudinal_controller {
-class PIDLongitudinalController {
-isReady(InputData) override
-run(InputData) override
+class PidLongitudinalController {
+run(InputData, stamp, is_steer_converged)
 }
 }
 
@@ -61,6 +51,7 @@ package autoware_trajectory_follower_node {
 class Controller {
 longitudinal_controller_
 lateral_controller_
+is_steer_converged_
 onTimer()
 createInputData(): InputData
 }
@@ -68,14 +59,13 @@ createInputData(): InputData
 
 MPCLateralController --|> LateralControllerBase
 PurePursuitLateralController --|> LateralControllerBase
-PIDLongitudinalController --|> LongitudinalControllerBase
 
-LateralSyncData --> LongitudinalControllerBase
+LateralSyncData --> PidLongitudinalController
 InputData ..> LateralControllerBase
-InputData ..> LongitudinalControllerBase
+InputData ..> PidLongitudinalController
 
 LateralControllerBase --o Controller
-LongitudinalControllerBase --o Controller
+PidLongitudinalController --o Controller
 InputData ..> Controller
 @enduml
 ```
@@ -89,19 +79,17 @@ if (!input_data) {
   return;
 }
 
-// 2. check if controllers are ready
-const bool is_lat_ready = lateral_controller_->isReady(*input_data);
-const bool is_lon_ready = longitudinal_controller_->isReady(*input_data);
-if (!is_lat_ready || !is_lon_ready) {
+// 2. check if the lateral controller is ready
+if (!lateral_controller_->isReady(*input_data)) {
   return;
 }
 
 // 3. run controllers
 const auto lat_out = lateral_controller_->run(*input_data);
-const auto lon_out = longitudinal_controller_->run(*input_data);
+const auto lon_result = longitudinal_controller_->run(*input_data, stamp, is_steer_converged_);
 
-// 4. give the lateral result to the longitudinal controller
-longitudinal_controller_->sync(lat_out.sync_data);
+// 4. carry the lateral result over to the next cycle of the longitudinal controller
+is_steer_converged_ = lat_out.sync_data.is_steer_converged;
 
 // 5. publish control command
 control_cmd_pub_->publish(out);

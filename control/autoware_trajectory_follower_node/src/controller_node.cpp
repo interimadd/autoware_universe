@@ -53,17 +53,12 @@ namespace autoware::motion::control::trajectory_follower_node
 {
 Controller::Controller(const rclcpp::NodeOptions & node_options)
 : Node("controller", node_options),
-  diag_updater_(std::make_shared<diagnostic_updater::Updater>(this))
+  diag_updater_(std::make_shared<diagnostic_updater::Updater>(this)),
+  longitudinal_logger_(get_logger().get_child("longitudinal_controller"))
 {
   using std::placeholders::_1;
 
   const double ctrl_period = declare_parameter<double>("ctrl_period");
-  const auto trajectory_reference_mode =
-    declare_parameter<std::string>("trajectory_reference_mode", "spatial");
-  if (trajectory_reference_mode != "spatial" && trajectory_reference_mode != "temporal") {
-    throw std::invalid_argument(
-      "Invalid trajectory_reference_mode. Expected \"spatial\" or \"temporal\".");
-  }
   timeout_thr_sec_ = declare_parameter<double>("timeout_thr_sec");
   cyclic_message_timeout_thr_sec_ = declare_parameter<double>("cyclic_message_timeout_thr_sec");
   // NOTE: It is possible that using control_horizon could be expected to enhance performance,
@@ -74,6 +69,7 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
 
   diag_updater_->setHardwareID("trajectory_follower_node");
   diag_updater_->add("incoming_message_timeout", this, &Controller::check_cyclic_message_timeout);
+  diag_updater_->add("control_state", this, &Controller::check_longitudinal_control_state);
 
   const auto lateral_controller_mode =
     getLateralControllerMode(declare_parameter<std::string>("lateral_controller_mode"));
@@ -92,18 +88,16 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
       throw std::domain_error("[LateralController] invalid algorithm");
   }
 
-  const auto longitudinal_controller_mode =
-    getLongitudinalControllerMode(declare_parameter<std::string>("longitudinal_controller_mode"));
-  switch (longitudinal_controller_mode) {
-    case LongitudinalControllerMode::PID: {
-      longitudinal_controller_ =
-        std::make_shared<pid_longitudinal_controller::PidLongitudinalControllerNode>(
-          *this, diag_updater_);
-      break;
-    }
-    default:
-      throw std::domain_error("[LongitudinalController] invalid algorithm");
+  // PID is the only longitudinal algorithm, so the mode is validated rather than dispatched on.
+  if (declare_parameter<std::string>("longitudinal_controller_mode") != "pid") {
+    throw std::domain_error("[LongitudinalController] invalid algorithm");
   }
+  longitudinal_config_ =
+    pid_longitudinal_controller::create_pid_longitudinal_controller_config(*this);
+  longitudinal_controller_ =
+    std::make_unique<pid_longitudinal_controller::PidLongitudinalController>(longitudinal_config_);
+  set_param_res_ =
+    add_on_set_parameters_callback(std::bind(&Controller::onSetParameters, this, _1));
 
   control_cmd_pub_ = create_publisher<autoware_control_msgs::msg::Control>(
     "~/output/control_cmd", rclcpp::QoS{1}.transient_local());
@@ -113,6 +107,13 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
     create_publisher<Float64Stamped>("~/longitudinal/debug/processing_time_ms", 1);
   debug_marker_pub_ =
     create_publisher<visualization_msgs::msg::MarkerArray>("~/output/debug_marker", rclcpp::QoS{1});
+  pub_slope_ = create_publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>(
+    "~/output/slope_angle", rclcpp::QoS{1});
+  pub_longitudinal_diagnostic_ =
+    create_publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>(
+      "~/output/longitudinal_diagnostic", rclcpp::QoS{1});
+  pub_virtual_wall_marker_ =
+    create_publisher<visualization_msgs::msg::MarkerArray>("~/virtual_wall", rclcpp::QoS{1});
 
   sub_steering_offset_update_ =
     create_subscription<autoware_internal_debug_msgs::msg::Float32Stamped>(
@@ -148,12 +149,17 @@ Controller::LateralControllerMode Controller::getLateralControllerMode(
   return LateralControllerMode::INVALID;
 }
 
-Controller::LongitudinalControllerMode Controller::getLongitudinalControllerMode(
-  const std::string & controller_mode) const
+rcl_interfaces::msg::SetParametersResult Controller::onSetParameters(
+  const std::vector<rclcpp::Parameter> & parameters)
 {
-  if (controller_mode == "pid") return LongitudinalControllerMode::PID;
+  pid_longitudinal_controller::update_pid_longitudinal_controller_config(
+    longitudinal_config_, parameters);
+  longitudinal_controller_->setConfig(longitudinal_config_);
 
-  return LongitudinalControllerMode::INVALID;
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = true;
+  result.reason = "success";
+  return result;
 }
 
 void Controller::check_cyclic_message_timeout(diagnostic_updater::DiagnosticStatusWrapper & stat)
@@ -174,6 +180,23 @@ void Controller::check_cyclic_message_timeout(diagnostic_updater::DiagnosticStat
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "OK");
     stat.add("trajectory", "OK");
   }
+}
+
+void Controller::check_longitudinal_control_state(
+  diagnostic_updater::DiagnosticStatusWrapper & stat)
+{
+  using diagnostic_msgs::msg::DiagnosticStatus;
+
+  auto level = DiagnosticStatus::OK;
+  std::string msg = "OK";
+
+  if (longitudinal_control_state_ == pid_longitudinal_controller::ControlState::EMERGENCY) {
+    level = DiagnosticStatus::ERROR;
+    msg = "emergency occurred due to ";
+  }
+
+  stat.add<int32_t>("control_state", static_cast<int32_t>(longitudinal_control_state_));
+  stat.summary(level, msg);
 }
 
 bool Controller::processData(rclcpp::Clock & clock)
@@ -243,7 +266,8 @@ boost::optional<trajectory_follower::InputData> Controller::createInputData(rclc
 void Controller::callbackTimerControl()
 {
   autoware_control_msgs::msg::Control out;
-  out.stamp = this->now();
+  const rclcpp::Time stamp = this->now();
+  out.stamp = stamp;
 
   // 1. create input data
   const auto input_data = createInputData(*get_clock());
@@ -253,13 +277,11 @@ void Controller::callbackTimerControl()
     return;
   }
 
-  // 2. check if controllers are ready
-  const bool is_lat_ready = lateral_controller_->isReady(*input_data);
-  const bool is_lon_ready = longitudinal_controller_->isReady(*input_data);
-  if (!is_lat_ready || !is_lon_ready) {
+  // 2. check if the lateral controller is ready
+  if (!lateral_controller_->isReady(*input_data)) {
     RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 5000,
-      "Control is skipped since lateral and/or longitudinal controllers are not ready to run.");
+      "Control is skipped since the lateral controller is not ready to run.");
     return;
   }
 
@@ -269,11 +291,17 @@ void Controller::callbackTimerControl()
   publishProcessingTime(stop_watch_.toc("lateral"), pub_processing_time_lat_ms_);
 
   stop_watch_.tic("longitudinal");
-  const auto lon_out = longitudinal_controller_->run(*input_data);
+  // NOTE: the steer convergence of the previous cycle is handed over, as the removed sync() did.
+  const auto lon_result = longitudinal_controller_->run(*input_data, stamp, is_steer_converged_);
   publishProcessingTime(stop_watch_.toc("longitudinal"), pub_processing_time_lon_ms_);
 
-  // 4. sync with each other controllers
-  longitudinal_controller_->sync(lat_out.sync_data);
+  // 4. carry the lateral result over to the next cycle of the longitudinal controller
+  is_steer_converged_ = lat_out.sync_data.is_steer_converged;
+  longitudinal_control_state_ = lon_result.control_state;
+  emitLongitudinalLogs(lon_result);
+  publishLongitudinalDebug(lon_result);
+
+  const auto & lon_out = lon_result.output;
 
   // TODO(Horibe): Think specification. This comes from the old implementation.
   if (isTimeOut(lon_out, lat_out)) return;
@@ -297,6 +325,30 @@ void Controller::callbackTimerControl()
     if (control_horizon.has_value()) {
       control_cmd_horizon_pub_->publish(control_horizon.value());
     }
+  }
+}
+
+void Controller::emitLongitudinalLogs(
+  const pid_longitudinal_controller::PidLongitudinalControllerResult & result)
+{
+  if (result.received_invalid_trajectory) {
+    RCLCPP_ERROR_THROTTLE(
+      longitudinal_logger_, *get_clock(), 3000, "received invalid trajectory. ignore.");
+  }
+  if (result.emergency_stop_reason) {
+    RCLCPP_ERROR(
+      longitudinal_logger_, "Emergency Stop since %s", result.emergency_stop_reason->c_str());
+  }
+}
+
+void Controller::publishLongitudinalDebug(
+  const pid_longitudinal_controller::PidLongitudinalControllerResult & result) const
+{
+  pub_longitudinal_diagnostic_->publish(result.debug_message);
+  pub_slope_->publish(result.slope_message);
+
+  if (result.virtual_wall_marker) {
+    pub_virtual_wall_marker_->publish(*result.virtual_wall_marker);
   }
 }
 

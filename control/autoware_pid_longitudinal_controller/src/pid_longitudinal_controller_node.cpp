@@ -17,16 +17,13 @@
 #include "autoware_vehicle_info_utils/vehicle_info_utils.hpp"
 
 #include <algorithm>
-#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace autoware::motion::control::pid_longitudinal_controller
 {
-namespace
-{
-PidLongitudinalControllerConfig create_config(rclcpp::Node & node)
+PidLongitudinalControllerConfig create_pid_longitudinal_controller_config(rclcpp::Node & node)
 {
   PidLongitudinalControllerConfig config{};
 
@@ -205,37 +202,9 @@ PidLongitudinalControllerConfig create_config(rclcpp::Node & node)
 
   return config;
 }
-}  // namespace
 
-PidLongitudinalControllerNode::PidLongitudinalControllerNode(
-  rclcpp::Node & node, std::shared_ptr<diagnostic_updater::Updater> diag_updater)
-: node_parameters_(node.get_node_parameters_interface()),
-  clock_(node.get_clock()),
-  logger_(node.get_logger().get_child("longitudinal_controller")),
-  config(create_config(node)),
-  controller_(config)
-{
-  using std::placeholders::_1;
-
-  diag_updater_ = diag_updater;
-
-  // subscriber, publisher
-  m_pub_slope = node.create_publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>(
-    "~/output/slope_angle", rclcpp::QoS{1});
-  m_pub_debug = node.create_publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>(
-    "~/output/longitudinal_diagnostic", rclcpp::QoS{1});
-  m_pub_virtual_wall_marker = node.create_publisher<MarkerArray>("~/virtual_wall", 1);
-
-  // set parameter callback
-  m_set_param_res = node.add_on_set_parameters_callback(
-    std::bind(&PidLongitudinalControllerNode::paramCallback, this, _1));
-
-  // diagnostic
-  setupDiagnosticUpdater();
-}
-
-rcl_interfaces::msg::SetParametersResult PidLongitudinalControllerNode::paramCallback(
-  const std::vector<rclcpp::Parameter> & parameters)
+void update_pid_longitudinal_controller_config(
+  PidLongitudinalControllerConfig & config, const std::vector<rclcpp::Parameter> & parameters)
 {
   auto update_param = [&](const std::string & name, double & v) {
     auto it = std::find_if(
@@ -336,78 +305,6 @@ rcl_interfaces::msg::SetParametersResult PidLongitudinalControllerNode::paramCal
   update_param("max_pitch_rad", config.max_pitch_rad);
   update_param("min_pitch_rad", config.min_pitch_rad);
   update_param("adaptive_trajectory_velocity_th", config.adaptive_trajectory_velocity_th);
-
-  controller_.setConfig(config);
-
-  rcl_interfaces::msg::SetParametersResult result;
-  result.successful = true;
-  result.reason = "success";
-  return result;
-}
-
-bool PidLongitudinalControllerNode::isReady(
-  [[maybe_unused]] const trajectory_follower::InputData & input_data)
-{
-  return true;
-}
-
-trajectory_follower::LongitudinalOutput PidLongitudinalControllerNode::run(
-  trajectory_follower::InputData const & input_data)
-{
-  // capture the time once for this control cycle
-  const rclcpp::Time current_time = clock_->now();
-
-  const auto result =
-    controller_.run(input_data, current_time, lateral_sync_data_.is_steer_converged);
-
-  control_state_ = result.control_state;
-
-  emitLogs(result);
-  publishMessage(result);
-
-  return result.output;
-}
-
-void PidLongitudinalControllerNode::emitLogs(const PidLongitudinalControllerResult & result)
-{
-  if (result.received_invalid_trajectory) {
-    RCLCPP_ERROR_THROTTLE(logger_, *clock_, 3000, "received invalid trajectory. ignore.");
-  }
-  if (result.emergency_stop_reason) {
-    RCLCPP_ERROR(logger_, "Emergency Stop since %s", result.emergency_stop_reason->c_str());
-  }
-}
-
-void PidLongitudinalControllerNode::publishMessage(const PidLongitudinalControllerResult & result)
-{
-  m_pub_debug->publish(result.debug_message);
-  m_pub_slope->publish(result.slope_message);
-
-  if (result.virtual_wall_marker) {
-    m_pub_virtual_wall_marker->publish(*result.virtual_wall_marker);
-  }
-}
-
-void PidLongitudinalControllerNode::setupDiagnosticUpdater()
-{
-  diag_updater_->add("control_state", this, &PidLongitudinalControllerNode::checkControlState);
-}
-
-void PidLongitudinalControllerNode::checkControlState(
-  diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  using diagnostic_msgs::msg::DiagnosticStatus;
-
-  auto level = DiagnosticStatus::OK;
-  std::string msg = "OK";
-
-  if (control_state_ == ControlState::EMERGENCY) {
-    level = DiagnosticStatus::ERROR;
-    msg = "emergency occurred due to ";
-  }
-
-  stat.add<int32_t>("control_state", static_cast<int32_t>(control_state_));
-  stat.summary(level, msg);
 }
 
 }  // namespace autoware::motion::control::pid_longitudinal_controller

@@ -16,78 +16,21 @@
 #define AUTOWARE__PID_LONGITUDINAL_CONTROLLER__PID_LONGITUDINAL_CONTROLLER_NODE_HPP_
 
 #include "autoware/pid_longitudinal_controller/pid_longitudinal_controller.hpp"
-#include "autoware/trajectory_follower_base/longitudinal_controller_base.hpp"
-#include "diagnostic_updater/diagnostic_updater.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-#include "autoware_internal_debug_msgs/msg/float32_multi_array_stamped.hpp"
-#include "visualization_msgs/msg/marker_array.hpp"
-
-#include <memory>
 #include <vector>
 
 namespace autoware::motion::control::pid_longitudinal_controller
 {
-using visualization_msgs::msg::MarkerArray;
+/// \brief declare every longitudinal control parameter on the node and read it into a config
+/// \param [in,out] node node that owns the parameters of the longitudinal controller
+PidLongitudinalControllerConfig create_pid_longitudinal_controller_config(rclcpp::Node & node);
 
-namespace trajectory_follower = ::autoware::motion::control::trajectory_follower;
-
-/// \class PidLongitudinalControllerNode
-/// \brief the rclcpp::Node wrapper around PidLongitudinalController: parameter
-/// declaration/reconfiguration, publishers, logging, and diagnostics.
-class PidLongitudinalControllerNode : public trajectory_follower::LongitudinalControllerBase
-{
-public:
-  /// \param node Reference to the node used only for the component and parameter initialization.
-  explicit PidLongitudinalControllerNode(
-    rclcpp::Node & node, std::shared_ptr<diagnostic_updater::Updater> diag_updater);
-
-private:
-  rclcpp::node_interfaces::NodeParametersInterface::SharedPtr node_parameters_;
-  rclcpp::Clock::SharedPtr clock_;
-  rclcpp::Logger logger_;
-
-  // ros variables
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
-    m_pub_slope;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
-    m_pub_debug;
-  rclcpp::Publisher<MarkerArray>::SharedPtr m_pub_virtual_wall_marker;
-
-  rclcpp::Node::OnSetParametersCallbackHandle::SharedPtr m_set_param_res;
-  rcl_interfaces::msg::SetParametersResult paramCallback(
-    const std::vector<rclcpp::Parameter> & parameters);
-
-  PidLongitudinalControllerConfig config;
-  PidLongitudinalController controller_;
-
-  // for diagnostics
-  ControlState control_state_{ControlState::STOPPED};
-
-  std::shared_ptr<diagnostic_updater::Updater>
-    diag_updater_{};  // Diagnostic updater for publishing diagnostic data.
-  void setupDiagnosticUpdater();
-  void checkControlState(diagnostic_updater::DiagnosticStatusWrapper & stat);
-
-  bool isReady(const trajectory_follower::InputData & input_data) override;
-
-  /**
-   * @brief compute control command, and publish periodically
-   */
-  trajectory_follower::LongitudinalOutput run(
-    trajectory_follower::InputData const & input_data) override;
-
-  /**
-   * @brief publish debug data and the virtual wall marker created during this cycle, if any
-   * @param [in] result output of the core control logic for this cycle
-   */
-  void publishMessage(const PidLongitudinalControllerResult & result);
-
-  /**
-   * @brief emit the critical logs raised by the core logic during this cycle
-   */
-  void emitLogs(const PidLongitudinalControllerResult & result);
-};
+/// \brief apply the parameters changed at runtime to an existing config
+/// \param [in,out] config config to update in place
+/// \param [in] parameters parameters given to the set-parameters callback of the node
+void update_pid_longitudinal_controller_config(
+  PidLongitudinalControllerConfig & config, const std::vector<rclcpp::Parameter> & parameters);
 }  // namespace autoware::motion::control::pid_longitudinal_controller
 
 #endif  // AUTOWARE__PID_LONGITUDINAL_CONTROLLER__PID_LONGITUDINAL_CONTROLLER_NODE_HPP_
