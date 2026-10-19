@@ -31,37 +31,28 @@
 #define AUTOWARE__PURE_PURSUIT__AUTOWARE_PURE_PURSUIT_LATERAL_CONTROLLER_HPP_
 
 #include "autoware/pure_pursuit/autoware_pure_pursuit.hpp"
-#include "autoware/pure_pursuit/autoware_pure_pursuit_viz.hpp"
+#include "autoware/trajectory_follower_base/input_data.hpp"
 #include "autoware/trajectory_follower_base/lateral_controller_base.hpp"
-#include "rclcpp/rclcpp.hpp"
-#include "tf2_ros/buffer.h"
-#include "tf2_ros/transform_listener.h"
 
-#include <autoware/motion_utils/resample/resample.hpp>
-#include <autoware/motion_utils/trajectory/conversion.hpp>
-#include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <rclcpp/time.hpp>
 
 #include "autoware_control_msgs/msg/lateral.hpp"
 #include "autoware_internal_debug_msgs/msg/float32_multi_array_stamped.hpp"
 #include "autoware_planning_msgs/msg/trajectory.hpp"
-#include "geometry_msgs/msg/pose_stamped.hpp"
-#include "geometry_msgs/msg/twist_stamped.hpp"
 #include "nav_msgs/msg/odometry.hpp"
-
-#include <boost/optional.hpp>  // To be replaced by std::optional in C++17
+#include "visualization_msgs/msg/marker_array.hpp"
 
 #include <memory>
+#include <optional>
 #include <vector>
-
-using autoware::motion::control::trajectory_follower::InputData;
-using autoware::motion::control::trajectory_follower::LateralControllerBase;
-using autoware::motion::control::trajectory_follower::LateralOutput;
-using autoware_control_msgs::msg::Lateral;
-using autoware_planning_msgs::msg::Trajectory;
-using autoware_planning_msgs::msg::TrajectoryPoint;
 
 namespace autoware::pure_pursuit
 {
+namespace trajectory_follower = ::autoware::motion::control::trajectory_follower;
+
+using autoware_control_msgs::msg::Lateral;
+using autoware_planning_msgs::msg::Trajectory;
+using autoware_planning_msgs::msg::TrajectoryPoint;
 
 struct PpOutput
 {
@@ -69,27 +60,47 @@ struct PpOutput
   double velocity;
 };
 
-struct Param
+/// Everything PurePursuitLateralController reads to set itself up. The node layer fills it
+/// from the parameters it declares, so that the controller itself needs no node.
+struct PurePursuitLateralControllerConfig
 {
-  // Global Parameters
-  double wheel_base;
-  double max_steering_angle;  // [rad]
+  // Vehicle
+  double wheel_base{0.0};
+  double max_steering_angle{0.0};  // [rad]
 
-  // Algorithm Parameters
-  double ld_velocity_ratio;
-  double ld_lateral_error_ratio;
-  double ld_curvature_ratio;
-  double min_lookahead_distance;
-  double max_lookahead_distance;
-  double reverse_min_lookahead_distance;  // min_lookahead_distance in reverse gear
-  double converged_steer_rad_;
-  double prediction_ds;
-  double prediction_distance_length;  // Total distance of prediction trajectory
-  double resampling_ds;
-  double curvature_calculation_distance;
-  double long_ld_lateral_error_threshold;
-  bool enable_path_smoothing;
-  int path_filter_moving_ave_num;
+  // Algorithm
+  double ld_velocity_ratio{0.0};
+  double ld_lateral_error_ratio{0.0};
+  double ld_curvature_ratio{0.0};
+  double min_lookahead_distance{0.0};
+  double max_lookahead_distance{0.0};
+  double reverse_min_lookahead_distance{0.0};  // min_lookahead_distance in reverse gear
+  double converged_steer_rad{0.0};
+  double prediction_ds{0.0};
+  double prediction_distance_length{0.0};  // Total distance of prediction trajectory
+  double resampling_ds{0.0};
+  double curvature_calculation_distance{0.0};
+  double long_ld_lateral_error_threshold{0.0};
+  bool enable_path_smoothing{false};
+  int64_t path_filter_moving_ave_num{0};
+};
+
+/// What one cycle of PurePursuitLateralController produced, beside the command itself. The
+/// node layer publishes the messages and reports the flags.
+struct PurePursuitLateralControllerResult
+{
+  trajectory_follower::LateralOutput output;
+  autoware_internal_debug_msgs::msg::Float32MultiArrayStamped lookahead_distance_values;
+  std::optional<Trajectory> predicted_trajectory{std::nullopt};
+  std::optional<visualization_msgs::msg::MarkerArray> debug_markers{std::nullopt};
+
+  // What the cycle met, which the node layer turns into log lines.
+  bool trajectory_too_short_to_smooth{false};
+  bool curvature_calculation_failed{false};
+  bool received_short_trajectory{false};
+  bool closest_waypoint_not_found{false};
+  bool control_command_solve_failed{false};
+  bool prediction_solve_failed{false};
 };
 
 struct DebugData
@@ -97,82 +108,67 @@ struct DebugData
   geometry_msgs::msg::Point next_target;
 };
 
-class PurePursuitLateralController : public LateralControllerBase
+class PurePursuitLateralController
 {
 public:
-  /// \param node Reference to the node used only for the component and parameter initialization.
-  explicit PurePursuitLateralController(rclcpp::Node & node);
-
-private:
-  rclcpp::Clock::SharedPtr clock_;
-  rclcpp::Logger logger_;
-  std::vector<TrajectoryPoint> output_tp_array_;
-  autoware_planning_msgs::msg::Trajectory::SharedPtr trajectory_resampled_;
-  autoware_planning_msgs::msg::Trajectory trajectory_;
-  nav_msgs::msg::Odometry current_odometry_;
-  autoware_vehicle_msgs::msg::SteeringReport current_steering_;
-  boost::optional<Lateral> prev_cmd_;
-
-  // Debug Publisher
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_debug_marker_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
-    pub_debug_values_;
-  // Predicted Trajectory publish
-  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr pub_predicted_trajectory_;
-
-  void onTrajectory(const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg);
-
-  void onCurrentOdometry(const nav_msgs::msg::Odometry::ConstSharedPtr msg);
-
-  void setResampledTrajectory();
-
-  // TF
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
-  geometry_msgs::msg::Pose current_pose_;
-
-  void publishDebugMarker() const;
+  explicit PurePursuitLateralController(const PurePursuitLateralControllerConfig & config);
 
   /**
    * @brief compute control command for path follow with a constant control period
+   * @param input_data input data required for control calculation
+   * @param stamp timestamp of this control cycle, captured once by the caller
    */
-  bool isReady([[maybe_unused]] const InputData & input_data) override;
-  LateralOutput run(const InputData & input_data) override;
+  PurePursuitLateralControllerResult run(
+    const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp);
 
-  Lateral generateCtrlCmdMsg(const double target_curvature);
+private:
+  PurePursuitLateralControllerConfig config_;
 
-  // Parameter
-  Param param_{};
+  std::vector<TrajectoryPoint> output_tp_array_;
+  Trajectory trajectory_resampled_;
+  nav_msgs::msg::Odometry current_odometry_;
+  autoware_vehicle_msgs::msg::SteeringReport current_steering_;
+  std::optional<Lateral> prev_cmd_{std::nullopt};
 
   // Algorithm
   std::unique_ptr<PurePursuit> pure_pursuit_;
 
-  boost::optional<PpOutput> calcTargetCurvature(
-    bool is_control_output, geometry_msgs::msg::Pose pose);
+  // What the running cycle met. Reset at the top of run() and copied into the result.
+  PurePursuitLateralControllerResult result_;
 
-  /**
-   * @brief It takes current pose, control command, and delta distance. Then it calculates next pose
-   * of vehicle.
-   */
+  // Timestamp of the running cycle, set at the top of run().
+  rclcpp::Time stamp_;
 
-  TrajectoryPoint calcNextPose(const double ds, TrajectoryPoint & point, Lateral cmd) const;
+  DebugData debug_data_;
 
-  boost::optional<Trajectory> generatePredictedTrajectory();
+  void setResampledTrajectory(const Trajectory & trajectory);
 
-  Lateral generateOutputControlCmd();
+  void averageFilterTrajectory(Trajectory & u);
 
-  bool calcIsSteerConverged(const Lateral & cmd);
+  double calcCurvature(const size_t closest_idx);
 
   double calcLookaheadDistance(
     const double lateral_error, const double curvature, const double velocity, const double min_ld,
     const bool is_control_cmd);
 
-  double calcCurvature(const size_t closest_idx);
+  std::optional<PpOutput> calcTargetCurvature(
+    bool is_control_output, const geometry_msgs::msg::Pose & pose);
 
-  void averageFilterTrajectory(autoware_planning_msgs::msg::Trajectory & u);
+  Lateral generateCtrlCmdMsg(const double target_curvature);
 
-  // Debug
-  mutable DebugData debug_data_;
+  Lateral generateOutputControlCmd();
+
+  bool calcIsSteerConverged(const Lateral & cmd) const;
+
+  /**
+   * @brief It takes current pose, control command, and delta distance. Then it calculates next pose
+   * of vehicle.
+   */
+  TrajectoryPoint calcNextPose(const double ds, TrajectoryPoint & point, Lateral cmd) const;
+
+  std::optional<Trajectory> generatePredictedTrajectory();
+
+  visualization_msgs::msg::MarkerArray createDebugMarker() const;
 };
 
 }  // namespace autoware::pure_pursuit
