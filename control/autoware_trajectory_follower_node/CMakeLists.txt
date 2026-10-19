@@ -5,12 +5,20 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 set(CONTROLLER_NODE controller_node)
-ament_auto_add_library(${CONTROLLER_NODE} SHARED
-  include/autoware/trajectory_follower_node/controller_node.hpp
-  include/autoware/trajectory_follower_node/trajectory_follower_config.hpp
-  src/controller_node.cpp
+# Core logic: no node, no topics, no parameters. An offline evaluation links only this.
+set(TRAJECTORY_FOLLOWER trajectory_follower)
+ament_auto_add_library(${TRAJECTORY_FOLLOWER} SHARED
+  src/trajectory_follower.cpp
   src/trajectory_follower_config.cpp
+  src/controller_factory.cpp
 )
+
+ament_auto_add_library(${CONTROLLER_NODE} SHARED
+  src/controller_node.cpp
+  src/create_config.cpp
+  src/ros_controller_factory.cpp
+)
+target_link_libraries(${CONTROLLER_NODE} ${TRAJECTORY_FOLLOWER})
 
 autoware_agnocast_wrapper_register_node(${CONTROLLER_NODE}
   PLUGIN "autoware::motion::control::trajectory_follower_node::Controller"

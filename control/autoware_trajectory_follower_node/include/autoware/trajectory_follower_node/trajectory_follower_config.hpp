@@ -18,7 +18,6 @@
 #include "autoware/mpc_lateral_controller/mpc_lateral_controller.hpp"
 #include "autoware/pid_longitudinal_controller/pid_longitudinal_controller.hpp"
 #include "autoware/pure_pursuit/autoware_pure_pursuit_lateral_controller.hpp"
-#include "rclcpp/rclcpp.hpp"
 
 #include <string>
 
@@ -49,10 +48,6 @@ LateralControllerKind parseLateralControllerKind(const std::string & name);
 
 /// @throw std::invalid_argument when the name is not a longitudinal controller this node builds.
 LongitudinalControllerKind parseLongitudinalControllerKind(const std::string & name);
-
-/// Read every parameter the follower needs from the node, declaring them on it. This is the
-/// one place where a parameter of this node is declared.
-TrajectoryFollowerConfig createConfig(rclcpp::Node & node);
 
 }  // namespace autoware::motion::control::trajectory_follower_node
 

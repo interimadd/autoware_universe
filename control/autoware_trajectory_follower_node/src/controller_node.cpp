@@ -14,41 +14,15 @@
 
 #include "autoware/trajectory_follower_node/controller_node.hpp"
 
-#include "autoware/mpc_lateral_controller/mpc_lateral_controller_node.hpp"
-#include "autoware/pid_longitudinal_controller/pid_longitudinal_controller_node.hpp"
-#include "autoware/pure_pursuit/autoware_pure_pursuit_lateral_controller_node.hpp"
-#include "autoware/trajectory_follower_node/trajectory_follower_config.hpp"
+#include "autoware/trajectory_follower_node/create_config.hpp"
+#include "autoware/trajectory_follower_node/ros_controller_factory.hpp"
 #include "autoware_utils/ros/marker_helper.hpp"
 
-#include <autoware/trajectory_follower_base/lateral_controller.hpp>
-
-#include <algorithm>
-#include <limits>
 #include <memory>
-#include <stdexcept>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <utility>
-#include <vector>
-
-namespace
-{
-template <typename T>
-std::vector<T> resampleHorizonByZeroOrderHold(
-  const std::vector<T> & original_horizon, const double original_time_step_ms,
-  const double new_time_step_ms)
-{
-  std::vector<T> resampled_horizon{};
-  const size_t step_factor = static_cast<size_t>(original_time_step_ms / new_time_step_ms);
-  const size_t resampled_size = original_horizon.size() * step_factor;
-  resampled_horizon.reserve(resampled_size);
-  for (const auto & command : original_horizon) {
-    for (size_t i = 0; i < step_factor; ++i) {
-      resampled_horizon.push_back(command);
-    }
-  }
-  return resampled_horizon;
-}
-}  // namespace
 
 namespace autoware::motion::control::trajectory_follower_node
 {
@@ -56,35 +30,16 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
 : Node("controller", node_options),
   diag_updater_(std::make_shared<diagnostic_updater::Updater>(this))
 {
-  using std::placeholders::_1;
-
   const auto config = createConfig(*this);
-  timeout_thr_sec_ = config.timeout_thr_sec;
   cyclic_message_timeout_thr_sec_ = config.cyclic_message_timeout_thr_sec;
   enable_control_cmd_horizon_pub_ = config.enable_control_cmd_horizon;
 
   diag_updater_->setHardwareID("trajectory_follower_node");
   diag_updater_->add("incoming_message_timeout", this, &Controller::check_cyclic_message_timeout);
 
-  switch (config.lateral_controller_kind) {
-    case LateralControllerKind::Mpc:
-      lateral_controller_ = std::make_shared<mpc_lateral_controller::MpcLateralControllerNode>(
-        *this, config.mpc, diag_updater_);
-      break;
-    case LateralControllerKind::PurePursuit:
-      lateral_controller_ =
-        std::make_shared<autoware::pure_pursuit::PurePursuitLateralControllerNode>(
-          *this, config.pure_pursuit);
-      break;
-  }
-
-  switch (config.longitudinal_controller_kind) {
-    case LongitudinalControllerKind::Pid:
-      longitudinal_controller_ =
-        std::make_shared<pid_longitudinal_controller::PidLongitudinalControllerNode>(
-          *this, config.pid, diag_updater_);
-      break;
-  }
+  trajectory_follower_ = std::make_unique<TrajectoryFollower>(
+    config, createLateralController(config, *this, diag_updater_),
+    createLongitudinalController(config, *this, diag_updater_));
 
   control_cmd_pub_ = create_publisher<autoware_control_msgs::msg::Control>(
     "~/output/control_cmd", rclcpp::QoS{1}.transient_local());
@@ -168,33 +123,13 @@ bool Controller::processData(rclcpp::Clock & clock)
   return is_ready;
 }
 
-bool Controller::isTimeOut(
-  const trajectory_follower::LongitudinalOutput & lon_out,
-  const trajectory_follower::LateralOutput & lat_out)
-{
-  const auto now = this->now();
-  if ((now - lat_out.control_cmd.stamp).seconds() > timeout_thr_sec_) {
-    RCLCPP_ERROR_THROTTLE(
-      get_logger(), *get_clock(), 5000 /*ms*/,
-      "Lateral control command too old, control_cmd will not be published.");
-    return true;
-  }
-  if ((now - lon_out.control_cmd.stamp).seconds() > timeout_thr_sec_) {
-    RCLCPP_ERROR_THROTTLE(
-      get_logger(), *get_clock(), 5000 /*ms*/,
-      "Longitudinal control command too old, control_cmd will not be published.");
-    return true;
-  }
-  return false;
-}
-
-std::optional<trajectory_follower::InputData> Controller::createInputData(rclcpp::Clock & clock)
+std::optional<InputData> Controller::createInputData(rclcpp::Clock & clock)
 {
   if (!processData(clock)) {
     return {};
   }
 
-  trajectory_follower::InputData input_data;
+  InputData input_data;
   input_data.current_trajectory = *current_trajectory_ptr_;
   input_data.current_odometry = *current_odometry_ptr_;
   input_data.current_steering = *current_steering_ptr_;
@@ -207,73 +142,51 @@ std::optional<trajectory_follower::InputData> Controller::createInputData(rclcpp
 
 void Controller::callbackTimerControl()
 {
-  autoware_control_msgs::msg::Control out;
-  out.stamp = this->now();
+  const auto stamp = this->now();
 
   // 1. create input data
   const auto input_data = createInputData(*get_clock());
   if (!input_data) {
     RCLCPP_INFO_THROTTLE(
-      get_logger(), *get_clock(), 5000, "Control is skipped since input data is not ready.");
-    return;
-  }
-
-  // 2. run controllers
-  stop_watch_.tic("lateral");
-  const auto lat_result = lateral_controller_->run(*input_data, out.stamp);
-  publishProcessingTime(stop_watch_.toc("lateral"), pub_processing_time_lat_ms_);
-  if (!lat_result) {
-    RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), logger_throttle_interval,
-      "Control is skipped since the lateral controller cannot run: %s", lat_result.error().c_str());
+      "Control is skipped since input data is not ready.");
     return;
   }
 
-  stop_watch_.tic("longitudinal");
-  const auto lon_result = longitudinal_controller_->run(*input_data, lateral_feedback_, out.stamp);
-  publishProcessingTime(stop_watch_.toc("longitudinal"), pub_processing_time_lon_ms_);
-  if (!lon_result) {
-    RCLCPP_INFO_THROTTLE(
-      get_logger(), *get_clock(), logger_throttle_interval,
-      "Control is skipped since the longitudinal controller cannot run: %s",
-      lon_result.error().c_str());
-    return;
+  // 2. run the follower
+  const auto result = trajectory_follower_->run(*input_data, stamp);
+
+  // 3. publish how long each controller took, whether or not it produced a command
+  if (result) {
+    publishProcessingTime(result->lateral_processing_time_ms, pub_processing_time_lat_ms_);
+    publishProcessingTime(result->longitudinal_processing_time_ms, pub_processing_time_lon_ms_);
   }
 
-  const auto & lat_out = *lat_result;
-  const auto & lon_out = *lon_result;
-
-  // 3. carry the lateral result to the longitudinal controller of the next cycle
-  lateral_feedback_ = lat_out.feedback;
-
-  // TODO(Horibe): Think specification. This comes from the old implementation.
-  if (isTimeOut(lon_out, lat_out)) return;
-
-  // 4.5. update diagnostics
+  // 4. update diagnostics
   diag_updater_->force_update();
 
+  if (!result) {
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), logger_throttle_interval, "Control is skipped since %s.",
+      result.error().c_str());
+    return;
+  }
+
   // 5. publish control command
-  out.lateral = lat_out.control_cmd;
-  out.longitudinal = lon_out.control_cmd;
-  control_cmd_pub_->publish(out);
+  control_cmd_pub_->publish(result->control_cmd);
 
   // 6. publish debug
-  published_time_publisher_->publish_if_subscribed(control_cmd_pub_, out.stamp);
-  publishDebugMarker(*input_data, lat_out);
+  published_time_publisher_->publish_if_subscribed(control_cmd_pub_, result->control_cmd.stamp);
+  publishDebugMarker(*input_data, *result);
 
   // 7. publish experimental topic
-  if (enable_control_cmd_horizon_pub_) {
-    const auto control_horizon =
-      mergeLatLonHorizon(lat_out.control_cmd_horizon, lon_out.control_cmd_horizon, this->now());
-    if (control_horizon.has_value()) {
-      control_cmd_horizon_pub_->publish(control_horizon.value());
-    }
+  if (enable_control_cmd_horizon_pub_ && !result->control_cmd_horizon.controls.empty()) {
+    control_cmd_horizon_pub_->publish(result->control_cmd_horizon);
   }
 }
 
 void Controller::publishDebugMarker(
-  const trajectory_follower::InputData & input_data,
-  const trajectory_follower::LateralOutput & lat_out) const
+  const InputData & input_data, const TrajectoryFollowerResult & result) const
 {
   visualization_msgs::msg::MarkerArray debug_marker_array{};
 
@@ -287,10 +200,10 @@ void Controller::publishDebugMarker(
 
     std::stringstream ss;
     const double current = input_data.current_steering.steering_tire_angle;
-    const double cmd = lat_out.control_cmd.steering_tire_angle;
+    const double cmd = result.control_cmd.lateral.steering_tire_angle;
     const double diff = current - cmd;
     ss << "current:" << current << " cmd:" << cmd << " diff:" << diff
-       << (lat_out.feedback.is_steer_converged ? " (converged)" : " (not converged)");
+       << (result.lateral_feedback.is_steer_converged ? " (converged)" : " (not converged)");
     marker.text = ss.str();
 
     debug_marker_array.markers.push_back(marker);
@@ -306,75 +219,6 @@ void Controller::publishProcessingTime(
   msg.stamp = this->now();
   msg.data = t_ms;
   pub->publish(msg);
-}
-
-std::optional<ControlHorizon> Controller::mergeLatLonHorizon(
-  const LateralHorizon & lateral_horizon, const LongitudinalHorizon & longitudinal_horizon,
-  const rclcpp::Time & stamp)
-{
-  if (lateral_horizon.controls.empty() || longitudinal_horizon.controls.empty()) {
-    return std::nullopt;
-  }
-
-  autoware_control_msgs::msg::ControlHorizon control_horizon{};
-  control_horizon.stamp = stamp;
-
-  // If either of the horizons has only one control, repeat the control to match the other horizon.
-  if (lateral_horizon.controls.size() == 1) {
-    control_horizon.time_step_ms = longitudinal_horizon.time_step_ms;
-    const auto lateral = lateral_horizon.controls.front();
-    for (const auto & longitudinal : longitudinal_horizon.controls) {
-      autoware_control_msgs::msg::Control control;
-      control.longitudinal = longitudinal;
-      control.lateral = lateral;
-      control.stamp = stamp;
-      control_horizon.controls.push_back(control);
-    }
-    return control_horizon;
-  }
-  if (longitudinal_horizon.controls.size() == 1) {
-    control_horizon.time_step_ms = lateral_horizon.time_step_ms;
-    const auto longitudinal = longitudinal_horizon.controls.front();
-    for (const auto & lateral : lateral_horizon.controls) {
-      autoware_control_msgs::msg::Control control;
-      control.longitudinal = longitudinal;
-      control.lateral = lateral;
-      control.stamp = stamp;
-      control_horizon.controls.push_back(control);
-    }
-    return control_horizon;
-  }
-
-  // If both horizons have multiple controls, align the time steps and zero-order hold the controls.
-  // calculate greatest common divisor of time steps
-  const auto gcd_double = [](const double a, const double b) {
-    const double precision = 1e9;
-    const int int_a = static_cast<int>(round(a * precision));
-    const int int_b = static_cast<int>(round(b * precision));
-    return static_cast<double>(std::gcd(int_a, int_b)) / precision;
-  };
-  const double time_step_ms =
-    gcd_double(lateral_horizon.time_step_ms, longitudinal_horizon.time_step_ms);
-  control_horizon.time_step_ms = time_step_ms;
-
-  const auto lateral_controls = resampleHorizonByZeroOrderHold(
-    lateral_horizon.controls, lateral_horizon.time_step_ms, time_step_ms);
-  const auto longitudinal_controls = resampleHorizonByZeroOrderHold(
-    longitudinal_horizon.controls, longitudinal_horizon.time_step_ms, time_step_ms);
-
-  if (lateral_controls.size() != longitudinal_controls.size()) {
-    return std::nullopt;
-  }
-
-  const size_t num_steps = lateral_controls.size();
-  for (size_t i = 0; i < num_steps; ++i) {
-    autoware_control_msgs::msg::Control control{};
-    control.stamp = stamp;
-    control.lateral = lateral_controls.at(i);
-    control.longitudinal = longitudinal_controls.at(i);
-    control_horizon.controls.push_back(control);
-  }
-  return control_horizon;
 }
 
 }  // namespace autoware::motion::control::trajectory_follower_node

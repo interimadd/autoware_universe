@@ -15,14 +15,10 @@
 #ifndef AUTOWARE__TRAJECTORY_FOLLOWER_NODE__CONTROLLER_NODE_HPP_
 #define AUTOWARE__TRAJECTORY_FOLLOWER_NODE__CONTROLLER_NODE_HPP_
 
-#include "autoware/trajectory_follower_base/control_horizon.hpp"
-#include "autoware/trajectory_follower_base/lateral_controller.hpp"
-#include "autoware/trajectory_follower_base/longitudinal_controller.hpp"
+#include "autoware/trajectory_follower_node/trajectory_follower.hpp"
 #include "autoware/trajectory_follower_node/visibility_control.hpp"
 #include "autoware_utils/ros/logger_level_configure.hpp"
 #include "autoware_utils/ros/polling_subscriber.hpp"
-#include "autoware_utils/system/stop_watch.hpp"
-#include "autoware_vehicle_info_utils/vehicle_info_utils.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 #include <autoware_utils/ros/published_time_publisher.hpp>
@@ -30,7 +26,6 @@
 
 #include "autoware_control_msgs/msg/control.hpp"
 #include "autoware_control_msgs/msg/control_horizon.hpp"
-#include "autoware_control_msgs/msg/longitudinal.hpp"
 #include "autoware_planning_msgs/msg/trajectory.hpp"
 #include "geometry_msgs/msg/accel_with_covariance_stamped.hpp"
 #include "nav_msgs/msg/odometry.hpp"
@@ -40,47 +35,30 @@
 
 #include <memory>
 #include <optional>
-#include <string>
-#include <utility>
-#include <vector>
 
-namespace autoware::motion::control
+namespace autoware::motion::control::trajectory_follower_node
 {
-using trajectory_follower::LateralHorizon;
-using trajectory_follower::LateralOutput;
-using trajectory_follower::LongitudinalHorizon;
-using trajectory_follower::LongitudinalOutput;
-namespace trajectory_follower_node
-{
-
 using autoware_adapi_v1_msgs::msg::OperationModeState;
-using autoware_control_msgs::msg::ControlHorizon;
 using autoware_internal_debug_msgs::msg::Float64Stamped;
-using autoware_utils::StopWatch;
-
-namespace trajectory_follower = ::autoware::motion::control::trajectory_follower;
 
 /// \classController
-/// \brief The node class used for generating longitudinal control commands (velocity/acceleration)
+/// \brief Drives a TrajectoryFollower from the topics of ROS 2. It takes the input
+/// messages, hands them to the follower once per control period, and publishes what the
+/// follower returned.
 class TRAJECTORY_FOLLOWER_PUBLIC Controller : public rclcpp::Node
 {
 public:
   explicit Controller(const rclcpp::NodeOptions & node_options);
-  virtual ~Controller() {}
 
 private:
   rclcpp::TimerBase::SharedPtr timer_control_;
-  double timeout_thr_sec_;
   double cyclic_message_timeout_thr_sec_;
   bool enable_control_cmd_horizon_pub_{false};
 
   std::shared_ptr<diagnostic_updater::Updater>
     diag_updater_;  // Diagnostic updater for publishing diagnostic data.
 
-  std::shared_ptr<trajectory_follower::LongitudinalController> longitudinal_controller_;
-  std::shared_ptr<trajectory_follower::LateralController> lateral_controller_;
-  /// What the lateral controller reported on the previous cycle.
-  trajectory_follower::LateralFeedback lateral_feedback_;
+  std::unique_ptr<TrajectoryFollower> trajectory_follower_;
 
   // Subscribers
   autoware_utils::InterProcessPollingSubscriber<autoware_planning_msgs::msg::Trajectory>
@@ -115,42 +93,25 @@ private:
   OperationModeState::ConstSharedPtr current_operation_mode_ptr_;
   double steering_offset_{0.0};
 
-  /**
-   * @brief compute control command, and publish periodically
-   */
-  std::optional<trajectory_follower::InputData> createInputData(rclcpp::Clock & clock);
-  void callbackTimerControl();
+  /// Assemble the input of one cycle from the latest message of each topic.
+  std::optional<InputData> createInputData(rclcpp::Clock & clock);
   bool processData(rclcpp::Clock & clock);
-  bool isTimeOut(const LongitudinalOutput & lon_out, const LateralOutput & lat_out);
+
+  /// Run the follower once and publish what it returned.
+  void callbackTimerControl();
+
   void check_cyclic_message_timeout(diagnostic_updater::DiagnosticStatusWrapper & stat);
+
   void publishDebugMarker(
-    const trajectory_follower::InputData & input_data,
-    const trajectory_follower::LateralOutput & lat_out) const;
-  /**
-   * @brief merge lateral and longitudinal horizons
-   * @details If one of the commands has only one control, repeat the control to match the other
-   *          horizon. If each horizon has different time intervals, resample them to match the size
-   *          with the greatest common divisor.
-   * @param lateral_horizon lateral horizon
-   * @param longitudinal_horizon longitudinal horizon
-   * @param stamp stamp
-   * @return merged control horizon
-   */
-  static std::optional<ControlHorizon> mergeLatLonHorizon(
-    const LateralHorizon & lateral_horizon, const LongitudinalHorizon & longitudinal_horizon,
-    const rclcpp::Time & stamp);
-
-  std::unique_ptr<autoware_utils::LoggerLevelConfigure> logger_configure_;
-
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
-
+    const InputData & input_data, const TrajectoryFollowerResult & result) const;
   void publishProcessingTime(
     const double t_ms, const rclcpp::Publisher<Float64Stamped>::SharedPtr pub);
-  StopWatch<std::chrono::milliseconds> stop_watch_;
+
+  std::unique_ptr<autoware_utils::LoggerLevelConfigure> logger_configure_;
+  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
 
   static constexpr double logger_throttle_interval = 5000;
 };
-}  // namespace trajectory_follower_node
-}  // namespace autoware::motion::control
+}  // namespace autoware::motion::control::trajectory_follower_node
 
 #endif  // AUTOWARE__TRAJECTORY_FOLLOWER_NODE__CONTROLLER_NODE_HPP_
