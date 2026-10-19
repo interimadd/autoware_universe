@@ -182,6 +182,13 @@ public:
     return *this;
   }
 
+  /// Steering calibration bias supplied from outside the controller [rad].
+  Input & with_steering_offset(const double offset)
+  {
+    input_.steering_offset = offset;
+    return *this;
+  }
+
   Input & without_autoware_control()
   {
     input_.current_operation_mode.is_autoware_control_enabled = false;
@@ -634,8 +641,11 @@ TEST_F(MpcLateralControllerTest, SteerPredictionTakesTheInitialAngleFromTheComma
 TEST_F(MpcLateralControllerTest, PositiveSteeringOffsetTurnsTheCommandNegative)
 {
   auto controller = make_controller();
-  controller->set_steering_offset(0.5 * steer_offset_max_update_th);
-  const auto input = Input().following(straight_path()).planned_at(1.0).driving_at(1.0);
+  const auto input = Input()
+                       .following(straight_path())
+                       .planned_at(1.0)
+                       .driving_at(1.0)
+                       .with_steering_offset(0.5 * steer_offset_max_update_th);
 
   const auto output = controller->run(input);
 
@@ -645,8 +655,11 @@ TEST_F(MpcLateralControllerTest, PositiveSteeringOffsetTurnsTheCommandNegative)
 TEST_F(MpcLateralControllerTest, NegativeSteeringOffsetTurnsTheCommandPositive)
 {
   auto controller = make_controller();
-  controller->set_steering_offset(-0.5 * steer_offset_max_update_th);
-  const auto input = Input().following(straight_path()).planned_at(1.0).driving_at(1.0);
+  const auto input = Input()
+                       .following(straight_path())
+                       .planned_at(1.0)
+                       .driving_at(1.0)
+                       .with_steering_offset(-0.5 * steer_offset_max_update_th);
 
   const auto output = controller->run(input);
 
@@ -659,30 +672,44 @@ TEST_F(MpcLateralControllerTest, NegativeSteeringOffsetTurnsTheCommandPositive)
 /// limit.
 TEST_F(MpcLateralControllerTest, SteeringOffsetBelowTheUpdateLimitReachesTheCommandInFull)
 {
-  const auto input = Input().following(straight_path()).planned_at(1.0).driving_at(1.0);
+  const auto input_at_limit = Input()
+                                .following(straight_path())
+                                .planned_at(1.0)
+                                .driving_at(1.0)
+                                .with_steering_offset(steer_offset_max_update_th);
   auto at_limit = make_controller();
-  at_limit->set_steering_offset(steer_offset_max_update_th);
-  const auto command_at_limit = at_limit->run(input).control_cmd.steering_tire_angle;
+  const auto command_at_limit = at_limit->run(input_at_limit).control_cmd.steering_tire_angle;
 
   auto below_limit = make_controller();
-  below_limit->set_steering_offset(0.5 * steer_offset_max_update_th);
+  const auto input_below_limit = Input()
+                                   .following(straight_path())
+                                   .planned_at(1.0)
+                                   .driving_at(1.0)
+                                   .with_steering_offset(0.5 * steer_offset_max_update_th);
 
-  const auto output = below_limit->run(input);
+  const auto output = below_limit->run(input_below_limit);
 
   EXPECT_GT(output.control_cmd.steering_tire_angle, command_at_limit);
 }
 
 TEST_F(MpcLateralControllerTest, SteeringOffsetPastTheUpdateLimitIsCappedWithinOneCycle)
 {
-  const auto input = Input().following(straight_path()).planned_at(1.0).driving_at(1.0);
+  const auto input_at_limit = Input()
+                                .following(straight_path())
+                                .planned_at(1.0)
+                                .driving_at(1.0)
+                                .with_steering_offset(steer_offset_max_update_th);
   auto at_limit = make_controller();
-  at_limit->set_steering_offset(steer_offset_max_update_th);
-  const auto command_at_limit = at_limit->run(input).control_cmd.steering_tire_angle;
+  const auto command_at_limit = at_limit->run(input_at_limit).control_cmd.steering_tire_angle;
 
   auto past_limit = make_controller();
-  past_limit->set_steering_offset(2.0 * steer_offset_max_update_th);
+  const auto input_past_limit = Input()
+                                  .following(straight_path())
+                                  .planned_at(1.0)
+                                  .driving_at(1.0)
+                                  .with_steering_offset(2.0 * steer_offset_max_update_th);
 
-  const auto output = past_limit->run(input);
+  const auto output = past_limit->run(input_past_limit);
 
   EXPECT_FLOAT_EQ(output.control_cmd.steering_tire_angle, command_at_limit);
 }
@@ -692,8 +719,11 @@ TEST_F(MpcLateralControllerTest, SteeringOffsetPastTheUpdateLimitIsCappedWithinO
 TEST_F(MpcLateralControllerTest, SteeringOffsetPastTheUpdateLimitIsAppliedFurtherOnLaterCycles)
 {
   auto controller = make_controller();
-  controller->set_steering_offset(2.0 * steer_offset_max_update_th);
-  const auto input = Input().following(straight_path()).planned_at(1.0).driving_at(1.0);
+  const auto input = Input()
+                       .following(straight_path())
+                       .planned_at(1.0)
+                       .driving_at(1.0)
+                       .with_steering_offset(2.0 * steer_offset_max_update_th);
   const auto first_cycle = controller->run(input).control_cmd.steering_tire_angle;
 
   const auto output = controller->run(input);
@@ -708,8 +738,11 @@ TEST_F(MpcLateralControllerTest, SteeringOffsetIsDroppedWhileAutomaticRemovalIsO
   ControllerOptions options;
   options.enable_auto_steering_offset_removal = false;
   auto controller = make_controller(options);
-  controller->set_steering_offset(2.0 * steer_offset_max_update_th);
-  const auto input = Input().following(straight_path()).planned_at(1.0).driving_at(1.0);
+  const auto input = Input()
+                       .following(straight_path())
+                       .planned_at(1.0)
+                       .driving_at(1.0)
+                       .with_steering_offset(2.0 * steer_offset_max_update_th);
 
   const auto output = controller->run(input);
 
@@ -1070,8 +1103,11 @@ Trajectory tuning_probe_path()
 TEST_F(MpcLateralControllerTest, DISABLED_SteeringOffsetReachesTheCommandButNotTheHorizon)
 {
   auto controller = make_controller();
-  controller->set_steering_offset(2.0 * steer_offset_max_update_th);
-  const auto input = Input().following(straight_path()).planned_at(1.0).driving_at(1.0);
+  const auto input = Input()
+                       .following(straight_path())
+                       .planned_at(1.0)
+                       .driving_at(1.0)
+                       .with_steering_offset(2.0 * steer_offset_max_update_th);
 
   const auto output = controller->run(input);
 

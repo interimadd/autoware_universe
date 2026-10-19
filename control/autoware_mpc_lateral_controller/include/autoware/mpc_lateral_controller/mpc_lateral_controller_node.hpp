@@ -57,8 +57,6 @@ public:
   static MpcLateralControllerConfig createConfig(
     rclcpp::Node & node, const trajectory_follower::CommonParams & common);
 
-  void set_steering_offset(double offset) override { m_controller->set_steering_offset(offset); }
-
 private:
   bool isReady(const trajectory_follower::InputData & input_data) override;
 
