@@ -18,11 +18,9 @@
 #include "autoware/trajectory_follower_base/control_horizon.hpp"
 #include "autoware/trajectory_follower_base/input_data.hpp"
 #include "autoware/trajectory_follower_base/sync_data.hpp"
-#include "rclcpp/rclcpp.hpp"
 
 #include "autoware_control_msgs/msg/lateral.hpp"
 
-#include <boost/optional.hpp>
 namespace autoware::motion::control::trajectory_follower
 {
 using autoware_control_msgs::msg::Lateral;

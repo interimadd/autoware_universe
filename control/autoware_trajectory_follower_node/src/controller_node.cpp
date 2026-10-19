@@ -224,7 +224,7 @@ bool Controller::isTimeOut(
   return false;
 }
 
-boost::optional<trajectory_follower::InputData> Controller::createInputData(rclcpp::Clock & clock)
+std::optional<trajectory_follower::InputData> Controller::createInputData(rclcpp::Clock & clock)
 {
   if (!processData(clock)) {
     return {};
