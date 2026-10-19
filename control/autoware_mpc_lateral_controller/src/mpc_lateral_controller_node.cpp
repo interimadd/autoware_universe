@@ -198,14 +198,14 @@ MpcLateralControllerNode::MpcLateralControllerNode(
 tl::expected<trajectory_follower::LateralOutput, std::string> MpcLateralControllerNode::run(
   const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp)
 {
-  const auto result = m_controller->run(input_data, stamp);
-  if (!result) {
-    return tl::unexpected(result.error());
+  const auto output = m_controller->run(input_data, stamp);
+  if (!output) {
+    return tl::unexpected(output.error());
   }
 
-  publish(*result);
+  publish(m_controller->lastResult());
 
-  return result->output;
+  return output;
 }
 
 void MpcLateralControllerNode::publish(const MpcLateralControllerResult & result)
@@ -229,7 +229,7 @@ void MpcLateralControllerNode::publish(const MpcLateralControllerResult & result
 
 void MpcLateralControllerNode::setStatus(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
-  const auto & mpc_result = m_controller->lastMpcResult();
+  const auto & mpc_result = m_controller->lastResult().mpc;
   if (mpc_result.result) {
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "MPC succeeded.");
   } else {

@@ -41,6 +41,7 @@
 #include <algorithm>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -293,7 +294,7 @@ std::optional<Trajectory> PurePursuitLateralController::generatePredictedTraject
   return predicted_trajectory;
 }
 
-PurePursuitLateralControllerResult PurePursuitLateralController::run(
+tl::expected<trajectory_follower::LateralOutput, std::string> PurePursuitLateralController::run(
   const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp)
 {
   result_ = PurePursuitLateralControllerResult();
@@ -314,7 +315,7 @@ PurePursuitLateralControllerResult PurePursuitLateralController::run(
   // calculate predicted trajectory with iterative calculation
   result_.predicted_trajectory = generatePredictedTrajectory();
 
-  return result_;
+  return result_.output;
 }
 
 bool PurePursuitLateralController::calcIsSteerConverged(const Lateral & cmd) const

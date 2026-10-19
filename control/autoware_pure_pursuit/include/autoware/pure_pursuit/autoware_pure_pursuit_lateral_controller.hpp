@@ -44,6 +44,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace autoware::pure_pursuit
@@ -108,7 +109,7 @@ struct DebugData
   geometry_msgs::msg::Point next_target;
 };
 
-class PurePursuitLateralController
+class PurePursuitLateralController : public trajectory_follower::LateralController
 {
 public:
   explicit PurePursuitLateralController(const PurePursuitLateralControllerConfig & config);
@@ -118,8 +119,12 @@ public:
    * @param input_data input data required for control calculation
    * @param stamp timestamp of this control cycle, captured once by the caller
    */
-  PurePursuitLateralControllerResult run(
-    const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp);
+  tl::expected<trajectory_follower::LateralOutput, std::string> run(
+    const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp) override;
+
+  /// Everything the last run() produced, which the node layer publishes and reports.
+  /// Only meaningful right after a run() that returned a value.
+  const PurePursuitLateralControllerResult & lastResult() const { return result_; }
 
 private:
   PurePursuitLateralControllerConfig config_;

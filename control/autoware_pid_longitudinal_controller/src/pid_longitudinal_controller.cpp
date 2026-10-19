@@ -105,10 +105,12 @@ void PidLongitudinalController::setConfig(const PidLongitudinalControllerConfig 
   m_smooth_stop->setParams(config.smooth_stop_params);
 }
 
-PidLongitudinalControllerResult PidLongitudinalController::run(
-  const trajectory_follower::InputData & input_data, const rclcpp::Time & current_time,
-  const bool is_steer_converged)
+tl::expected<trajectory_follower::LongitudinalOutput, std::string> PidLongitudinalController::run(
+  const trajectory_follower::InputData & input_data,
+  const trajectory_follower::LateralFeedback & lateral_feedback, const rclcpp::Time & current_time)
 {
+  const bool is_steer_converged = lateral_feedback.is_steer_converged;
+
   // calculate control data
   const auto control_data = getControlData(input_data, current_time);
 
@@ -145,7 +147,8 @@ PidLongitudinalControllerResult PidLongitudinalController::run(
     !is_valid_trajectory(input_data.current_trajectory, config.use_temporal_trajectory);
   result.emergency_stop_reason = emergency_stop_reason;
 
-  return result;
+  last_result_ = result;
+  return last_result_.output;
 }
 
 PidLongitudinalController::ControlData PidLongitudinalController::getControlData(

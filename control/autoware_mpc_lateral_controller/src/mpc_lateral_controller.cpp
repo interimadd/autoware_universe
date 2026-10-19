@@ -159,8 +159,8 @@ std::shared_ptr<QPSolverInterface> MpcLateralController::createQPSolverInterface
   return nullptr;
 }
 
-tl::expected<MpcLateralControllerResult, std::string> MpcLateralController::run(
-  trajectory_follower::InputData const & input_data, const rclcpp::Time & stamp)
+tl::expected<trajectory_follower::LateralOutput, std::string> MpcLateralController::run(
+  const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp)
 {
   MpcLateralControllerResult result;
 
@@ -258,7 +258,8 @@ tl::expected<MpcLateralControllerResult, std::string> MpcLateralController::run(
     // Use previous command value as previous raw steer command
     m_mpc->m_raw_steer_cmd_prev = m_ctrl_cmd_prev.steering_tire_angle;
     result.output = createLateralOutput(m_ctrl_cmd_prev, false, mpc_solved_status.ctrl_cmd_horizon);
-    return result;
+    m_last_result = result;
+    return m_last_result.output;
   }
 
   if (!mpc_solved_status.result) {
@@ -269,7 +270,8 @@ tl::expected<MpcLateralControllerResult, std::string> MpcLateralController::run(
   m_ctrl_cmd_prev = ctrl_cmd;
   result.output =
     createLateralOutput(ctrl_cmd, mpc_solved_status.result, mpc_solved_status.ctrl_cmd_horizon);
-  return result;
+  m_last_result = result;
+  return m_last_result.output;
 }
 
 bool MpcLateralController::isSteerConverged(const Lateral & cmd) const

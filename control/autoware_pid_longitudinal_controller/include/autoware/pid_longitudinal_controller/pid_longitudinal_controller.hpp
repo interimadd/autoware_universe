@@ -186,7 +186,7 @@ struct PidLongitudinalControllerResult
 /// \class PidLongitudinalController
 /// \brief generates longitudinal control commands (velocity/acceleration) from a trajectory and
 /// the current vehicle state; no dependency on rclcpp::Node/rclcpp::Logger
-class PidLongitudinalController
+class PidLongitudinalController : public trajectory_follower::LongitudinalController
 {
 public:
   explicit PidLongitudinalController(const PidLongitudinalControllerConfig & config);
@@ -200,9 +200,14 @@ public:
   /// mode
   /// \param [in] current_time time captured once per control cycle by the caller
   /// \param [in] is_steer_converged whether the lateral controller has converged its steering
-  PidLongitudinalControllerResult run(
-    const trajectory_follower::InputData & input_data, const rclcpp::Time & current_time,
-    const bool is_steer_converged);
+  tl::expected<trajectory_follower::LongitudinalOutput, std::string> run(
+    const trajectory_follower::InputData & input_data,
+    const trajectory_follower::LateralFeedback & lateral_feedback,
+    const rclcpp::Time & current_time) override;
+
+  /// Everything the last run() produced, which the node layer publishes and reports.
+  /// Only meaningful right after a run() that returned a value.
+  const PidLongitudinalControllerResult & lastResult() const { return last_result_; }
 
 private:
   struct Motion
@@ -245,6 +250,9 @@ private:
     double temporal_fused_time{std::numeric_limits<double>::quiet_NaN()};
     rclcpp::Time current_time{};  // time captured once per control cycle in run()
   };
+
+  // Everything the last run() produced.
+  PidLongitudinalControllerResult last_result_;
 
   // pointers for ros topic
   autoware_planning_msgs::msg::Trajectory m_last_valid_trajectory;

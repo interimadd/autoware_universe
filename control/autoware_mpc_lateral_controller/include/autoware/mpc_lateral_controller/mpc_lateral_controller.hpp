@@ -117,7 +117,7 @@ struct MpcLateralControllerResult
   Float32Stamped steering_offset;
 };
 
-class MpcLateralController
+class MpcLateralController : public trajectory_follower::LateralController
 {
 public:
   /// \param writer Where the controller reports what it meets. It has to outlive this
@@ -130,8 +130,9 @@ public:
   const MPCParam & mpcParam() const { return m_mpc->m_param; }
   void setMpcParam(const MPCParam & param);
 
-  /// The result of the last cycle, which the node layer reports as a diagnostic.
-  const MpcResult & lastMpcResult() const { return m_mpc_solved_status; }
+  /// Everything the last run() produced, which the node layer publishes and reports.
+  /// Only meaningful right after a run() that returned a value.
+  const MpcLateralControllerResult & lastResult() const { return m_last_result; }
 
 private:
   const LogWriter & writer_;
@@ -166,6 +167,9 @@ private:
 
   // MPC solver checker.
   MpcResult m_mpc_solved_status{true};
+
+  // Everything the last run() produced.
+  MpcLateralControllerResult m_last_result;
 
   // trajectory buffer for detecting new trajectory
   std::deque<Trajectory> m_trajectory_buffer;
@@ -234,9 +238,9 @@ public:
    * @param input_data Input data required for control calculation.
    * @return Lateral output control command.
    */
-  /// @return What the cycle produced, or the reason the controller cannot run yet.
-  tl::expected<MpcLateralControllerResult, std::string> run(
-    trajectory_follower::InputData const & input_data, const rclcpp::Time & stamp);
+  /// @return The command, or the reason the controller cannot produce one yet.
+  tl::expected<trajectory_follower::LateralOutput, std::string> run(
+    const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp) override;
 
 private:
   /**

@@ -73,12 +73,15 @@ PurePursuitLateralControllerNode::PurePursuitLateralControllerNode(
 tl::expected<trajectory_follower::LateralOutput, std::string> PurePursuitLateralControllerNode::run(
   const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp)
 {
-  const auto result = controller_.run(input_data, stamp);
+  const auto output = controller_.run(input_data, stamp);
+  if (!output) {
+    return tl::unexpected(output.error());
+  }
 
-  emitLogs(result);
-  publish(result);
+  emitLogs(controller_.lastResult());
+  publish(controller_.lastResult());
 
-  return result.output;
+  return output;
 }
 
 void PurePursuitLateralControllerNode::publish(const PurePursuitLateralControllerResult & result)

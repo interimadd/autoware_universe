@@ -336,14 +336,18 @@ PidLongitudinalControllerNode::run(
   const trajectory_follower::InputData & input_data,
   const trajectory_follower::LateralFeedback & lateral_feedback, const rclcpp::Time & stamp)
 {
-  const auto result = controller_.run(input_data, stamp, lateral_feedback.is_steer_converged);
+  const auto output = controller_.run(input_data, lateral_feedback, stamp);
+  if (!output) {
+    return tl::unexpected(output.error());
+  }
 
+  const auto & result = controller_.lastResult();
   control_state_ = result.control_state;
 
   emitLogs(result);
   publishMessage(result);
 
-  return result.output;
+  return output;
 }
 
 void PidLongitudinalControllerNode::emitLogs(const PidLongitudinalControllerResult & result)
