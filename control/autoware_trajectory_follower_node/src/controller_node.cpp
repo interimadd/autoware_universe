@@ -20,7 +20,7 @@
 #include "autoware/trajectory_follower_node/trajectory_follower_config.hpp"
 #include "autoware_utils/ros/marker_helper.hpp"
 
-#include <autoware/trajectory_follower_base/lateral_controller_base.hpp>
+#include <autoware/trajectory_follower_base/lateral_controller.hpp>
 
 #include <algorithm>
 #include <limits>
@@ -218,28 +218,33 @@ void Controller::callbackTimerControl()
     return;
   }
 
-  // 2. check if controllers are ready
-  const bool is_lat_ready = lateral_controller_->isReady(*input_data);
-  const bool is_lon_ready = longitudinal_controller_->isReady(*input_data);
-  if (!is_lat_ready || !is_lon_ready) {
+  // 2. run controllers
+  stop_watch_.tic("lateral");
+  const auto lat_result = lateral_controller_->run(*input_data, out.stamp);
+  publishProcessingTime(stop_watch_.toc("lateral"), pub_processing_time_lat_ms_);
+  if (!lat_result) {
     RCLCPP_INFO_THROTTLE(
-      get_logger(), *get_clock(), 5000,
-      "Control is skipped since lateral and/or longitudinal controllers are not ready to run.");
+      get_logger(), *get_clock(), logger_throttle_interval,
+      "Control is skipped since the lateral controller cannot run: %s", lat_result.error().c_str());
     return;
   }
 
-  // 3. run controllers
-  stop_watch_.tic("lateral");
-  const auto lat_out = lateral_controller_->run(*input_data);
-  publishProcessingTime(stop_watch_.toc("lateral"), pub_processing_time_lat_ms_);
-
   stop_watch_.tic("longitudinal");
-  const auto lon_out = longitudinal_controller_->run(*input_data);
+  const auto lon_result = longitudinal_controller_->run(*input_data, lateral_feedback_, out.stamp);
   publishProcessingTime(stop_watch_.toc("longitudinal"), pub_processing_time_lon_ms_);
+  if (!lon_result) {
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), logger_throttle_interval,
+      "Control is skipped since the longitudinal controller cannot run: %s",
+      lon_result.error().c_str());
+    return;
+  }
 
-  // 4. sync with each other controllers
-  longitudinal_controller_->sync(lat_out.sync_data);
-  lateral_controller_->sync(lon_out.sync_data);
+  const auto & lat_out = *lat_result;
+  const auto & lon_out = *lon_result;
+
+  // 3. carry the lateral result to the longitudinal controller of the next cycle
+  lateral_feedback_ = lat_out.feedback;
 
   // TODO(Horibe): Think specification. This comes from the old implementation.
   if (isTimeOut(lon_out, lat_out)) return;
@@ -285,7 +290,7 @@ void Controller::publishDebugMarker(
     const double cmd = lat_out.control_cmd.steering_tire_angle;
     const double diff = current - cmd;
     ss << "current:" << current << " cmd:" << cmd << " diff:" << diff
-       << (lat_out.sync_data.is_steer_converged ? " (converged)" : " (not converged)");
+       << (lat_out.feedback.is_steer_converged ? " (converged)" : " (not converged)");
     marker.text = ss.str();
 
     debug_marker_array.markers.push_back(marker);

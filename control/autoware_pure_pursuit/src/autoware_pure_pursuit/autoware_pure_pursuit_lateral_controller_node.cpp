@@ -16,6 +16,8 @@
 
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 
+#include <string>
+
 namespace autoware::pure_pursuit
 {
 PurePursuitLateralControllerConfig PurePursuitLateralControllerNode::createConfig(
@@ -68,18 +70,9 @@ PurePursuitLateralControllerNode::PurePursuitLateralControllerNode(
     "~/output/predicted_trajectory", 1);
 }
 
-bool PurePursuitLateralControllerNode::isReady(
-  [[maybe_unused]] const trajectory_follower::InputData & input_data)
+tl::expected<trajectory_follower::LateralOutput, std::string> PurePursuitLateralControllerNode::run(
+  const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp)
 {
-  return true;
-}
-
-trajectory_follower::LateralOutput PurePursuitLateralControllerNode::run(
-  const trajectory_follower::InputData & input_data)
-{
-  // Timestamp of this control cycle, shared by every message this call publishes.
-  const auto stamp = clock_->now();
-
   const auto result = controller_.run(input_data, stamp);
 
   emitLogs(result);

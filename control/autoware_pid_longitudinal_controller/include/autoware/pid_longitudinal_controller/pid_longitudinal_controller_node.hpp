@@ -17,7 +17,7 @@
 
 #include "autoware/pid_longitudinal_controller/pid_longitudinal_controller.hpp"
 #include "autoware/trajectory_follower_base/common_params.hpp"
-#include "autoware/trajectory_follower_base/longitudinal_controller_base.hpp"
+#include "autoware/trajectory_follower_base/longitudinal_controller.hpp"
 #include "diagnostic_updater/diagnostic_updater.hpp"
 #include "rclcpp/rclcpp.hpp"
 
@@ -25,6 +25,7 @@
 #include "visualization_msgs/msg/marker_array.hpp"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace autoware::motion::control::pid_longitudinal_controller
@@ -36,7 +37,7 @@ namespace trajectory_follower = ::autoware::motion::control::trajectory_follower
 /// \class PidLongitudinalControllerNode
 /// \brief the rclcpp::Node wrapper around PidLongitudinalController: parameter
 /// declaration/reconfiguration, publishers, logging, and diagnostics.
-class PidLongitudinalControllerNode : public trajectory_follower::LongitudinalControllerBase
+class PidLongitudinalControllerNode : public trajectory_follower::LongitudinalController
 {
 public:
   /// \param node Reference to the node used only for the publishers and the parameter callback.
@@ -77,13 +78,13 @@ private:
   void setupDiagnosticUpdater();
   void checkControlState(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
-  bool isReady(const trajectory_follower::InputData & input_data) override;
-
   /**
    * @brief compute control command, and publish periodically
    */
-  trajectory_follower::LongitudinalOutput run(
-    trajectory_follower::InputData const & input_data) override;
+  tl::expected<trajectory_follower::LongitudinalOutput, std::string> run(
+    const trajectory_follower::InputData & input_data,
+    const trajectory_follower::LateralFeedback & lateral_feedback,
+    const rclcpp::Time & stamp) override;
 
   /**
    * @brief publish debug data and the virtual wall marker created during this cycle, if any

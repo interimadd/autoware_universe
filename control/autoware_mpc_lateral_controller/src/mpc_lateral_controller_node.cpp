@@ -195,22 +195,17 @@ MpcLateralControllerNode::MpcLateralControllerNode(
   diag_updater_->add("MPC_solve_checker", [&](auto & stat) { setStatus(stat); });
 }
 
-bool MpcLateralControllerNode::isReady(const trajectory_follower::InputData & input_data)
+tl::expected<trajectory_follower::LateralOutput, std::string> MpcLateralControllerNode::run(
+  const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp)
 {
-  return m_controller->isReady(input_data);
-}
-
-trajectory_follower::LateralOutput MpcLateralControllerNode::run(
-  trajectory_follower::InputData const & input_data)
-{
-  // Timestamp of this control cycle, shared by every message this call publishes.
-  const auto stamp = clock_->now();
-
   const auto result = m_controller->run(input_data, stamp);
+  if (!result) {
+    return tl::unexpected(result.error());
+  }
 
-  publish(result);
+  publish(*result);
 
-  return result.output;
+  return result->output;
 }
 
 void MpcLateralControllerNode::publish(const MpcLateralControllerResult & result)

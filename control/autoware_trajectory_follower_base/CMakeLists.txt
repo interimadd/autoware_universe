@@ -4,9 +4,5 @@ project(autoware_trajectory_follower_base)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
-ament_auto_add_library(${PROJECT_NAME} SHARED
-  src/longitudinal_controller_base.cpp
-  src/lateral_controller_base.cpp
-)
-
+# This package only defines the types and the interfaces the controllers share.
 ament_auto_package()

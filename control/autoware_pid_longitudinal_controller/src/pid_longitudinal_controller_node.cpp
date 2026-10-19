@@ -331,20 +331,12 @@ rcl_interfaces::msg::SetParametersResult PidLongitudinalControllerNode::paramCal
   return result;
 }
 
-bool PidLongitudinalControllerNode::isReady(
-  [[maybe_unused]] const trajectory_follower::InputData & input_data)
+tl::expected<trajectory_follower::LongitudinalOutput, std::string>
+PidLongitudinalControllerNode::run(
+  const trajectory_follower::InputData & input_data,
+  const trajectory_follower::LateralFeedback & lateral_feedback, const rclcpp::Time & stamp)
 {
-  return true;
-}
-
-trajectory_follower::LongitudinalOutput PidLongitudinalControllerNode::run(
-  trajectory_follower::InputData const & input_data)
-{
-  // capture the time once for this control cycle
-  const rclcpp::Time current_time = clock_->now();
-
-  const auto result =
-    controller_.run(input_data, current_time, lateral_sync_data_.is_steer_converged);
+  const auto result = controller_.run(input_data, stamp, lateral_feedback.is_steer_converged);
 
   control_state_ = result.control_state;
 
