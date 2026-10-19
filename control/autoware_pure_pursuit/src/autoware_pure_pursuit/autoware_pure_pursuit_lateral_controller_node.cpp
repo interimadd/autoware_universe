@@ -50,10 +50,11 @@ PurePursuitLateralControllerConfig PurePursuitLateralControllerNode::createConfi
   return config;
 }
 
-PurePursuitLateralControllerNode::PurePursuitLateralControllerNode(rclcpp::Node & node)
+PurePursuitLateralControllerNode::PurePursuitLateralControllerNode(
+  rclcpp::Node & node, const PurePursuitLateralControllerConfig & config)
 : clock_(node.get_clock()),
   logger_(node.get_logger().get_child("lateral_controller")),
-  controller_(createConfig(node))
+  controller_(config)
 {
   // Debug Publishers
   pub_debug_marker_ =

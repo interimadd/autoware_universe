@@ -16,6 +16,7 @@
 #define AUTOWARE__PID_LONGITUDINAL_CONTROLLER__PID_LONGITUDINAL_CONTROLLER_NODE_HPP_
 
 #include "autoware/pid_longitudinal_controller/pid_longitudinal_controller.hpp"
+#include "autoware/trajectory_follower_base/common_params.hpp"
 #include "autoware/trajectory_follower_base/longitudinal_controller_base.hpp"
 #include "diagnostic_updater/diagnostic_updater.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -38,9 +39,16 @@ namespace trajectory_follower = ::autoware::motion::control::trajectory_follower
 class PidLongitudinalControllerNode : public trajectory_follower::LongitudinalControllerBase
 {
 public:
-  /// \param node Reference to the node used only for the component and parameter initialization.
-  explicit PidLongitudinalControllerNode(
-    rclcpp::Node & node, std::shared_ptr<diagnostic_updater::Updater> diag_updater);
+  /// \param node Reference to the node used only for the publishers and the parameter callback.
+  /// \param config Everything the controller reads to set itself up.
+  PidLongitudinalControllerNode(
+    rclcpp::Node & node, const PidLongitudinalControllerConfig & config,
+    std::shared_ptr<diagnostic_updater::Updater> diag_updater);
+
+  /// Read the parameters the controller needs from the node, declaring them on it.
+  /// \param common The settings the owning node declared and shares between controllers.
+  static PidLongitudinalControllerConfig createConfig(
+    rclcpp::Node & node, const trajectory_follower::CommonParams & common);
 
 private:
   rclcpp::node_interfaces::NodeParametersInterface::SharedPtr node_parameters_;
@@ -58,7 +66,7 @@ private:
   rcl_interfaces::msg::SetParametersResult paramCallback(
     const std::vector<rclcpp::Parameter> & parameters);
 
-  PidLongitudinalControllerConfig config;
+  PidLongitudinalControllerConfig config_;
   PidLongitudinalController controller_;
 
   // for diagnostics

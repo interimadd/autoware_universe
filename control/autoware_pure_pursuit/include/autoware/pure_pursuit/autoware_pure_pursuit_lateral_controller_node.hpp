@@ -30,8 +30,10 @@ namespace autoware::pure_pursuit
 class PurePursuitLateralControllerNode : public trajectory_follower::LateralControllerBase
 {
 public:
-  /// \param node Reference to the node used only for the component and parameter initialization.
-  explicit PurePursuitLateralControllerNode(rclcpp::Node & node);
+  /// \param node Reference to the node used only for the publishers.
+  /// \param config Everything the controller reads to set itself up.
+  PurePursuitLateralControllerNode(
+    rclcpp::Node & node, const PurePursuitLateralControllerConfig & config);
 
   /// Read the parameters the controller needs from the node, declaring them on it.
   static PurePursuitLateralControllerConfig createConfig(rclcpp::Node & node);

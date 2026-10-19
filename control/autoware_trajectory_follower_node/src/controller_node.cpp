@@ -17,6 +17,7 @@
 #include "autoware/mpc_lateral_controller/mpc_lateral_controller_node.hpp"
 #include "autoware/pid_longitudinal_controller/pid_longitudinal_controller_node.hpp"
 #include "autoware/pure_pursuit/autoware_pure_pursuit_lateral_controller_node.hpp"
+#include "autoware/trajectory_follower_node/trajectory_follower_config.hpp"
 #include "autoware_utils/ros/marker_helper.hpp"
 
 #include <autoware/trajectory_follower_base/lateral_controller_base.hpp>
@@ -57,52 +58,32 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
 {
   using std::placeholders::_1;
 
-  const double ctrl_period = declare_parameter<double>("ctrl_period");
-  const auto trajectory_reference_mode =
-    declare_parameter<std::string>("trajectory_reference_mode", "spatial");
-  if (trajectory_reference_mode != "spatial" && trajectory_reference_mode != "temporal") {
-    throw std::invalid_argument(
-      "Invalid trajectory_reference_mode. Expected \"spatial\" or \"temporal\".");
-  }
-  timeout_thr_sec_ = declare_parameter<double>("timeout_thr_sec");
-  cyclic_message_timeout_thr_sec_ = declare_parameter<double>("cyclic_message_timeout_thr_sec");
-  // NOTE: It is possible that using control_horizon could be expected to enhance performance,
-  // but it is not a formal interface topic, only an experimental one.
-  // So it is disabled by default.
-  enable_control_cmd_horizon_pub_ =
-    declare_parameter<bool>("enable_control_cmd_horizon_pub", false);
+  const auto config = createConfig(*this);
+  timeout_thr_sec_ = config.timeout_thr_sec;
+  cyclic_message_timeout_thr_sec_ = config.cyclic_message_timeout_thr_sec;
+  enable_control_cmd_horizon_pub_ = config.enable_control_cmd_horizon;
 
   diag_updater_->setHardwareID("trajectory_follower_node");
   diag_updater_->add("incoming_message_timeout", this, &Controller::check_cyclic_message_timeout);
 
-  const auto lateral_controller_mode =
-    getLateralControllerMode(declare_parameter<std::string>("lateral_controller_mode"));
-  switch (lateral_controller_mode) {
-    case LateralControllerMode::MPC: {
-      lateral_controller_ =
-        std::make_shared<mpc_lateral_controller::MpcLateralControllerNode>(*this, diag_updater_);
+  switch (config.lateral_controller_kind) {
+    case LateralControllerKind::Mpc:
+      lateral_controller_ = std::make_shared<mpc_lateral_controller::MpcLateralControllerNode>(
+        *this, config.mpc, diag_updater_);
       break;
-    }
-    case LateralControllerMode::PURE_PURSUIT: {
+    case LateralControllerKind::PurePursuit:
       lateral_controller_ =
-        std::make_shared<autoware::pure_pursuit::PurePursuitLateralControllerNode>(*this);
+        std::make_shared<autoware::pure_pursuit::PurePursuitLateralControllerNode>(
+          *this, config.pure_pursuit);
       break;
-    }
-    default:
-      throw std::domain_error("[LateralController] invalid algorithm");
   }
 
-  const auto longitudinal_controller_mode =
-    getLongitudinalControllerMode(declare_parameter<std::string>("longitudinal_controller_mode"));
-  switch (longitudinal_controller_mode) {
-    case LongitudinalControllerMode::PID: {
+  switch (config.longitudinal_controller_kind) {
+    case LongitudinalControllerKind::Pid:
       longitudinal_controller_ =
         std::make_shared<pid_longitudinal_controller::PidLongitudinalControllerNode>(
-          *this, diag_updater_);
+          *this, config.pid, diag_updater_);
       break;
-    }
-    default:
-      throw std::domain_error("[LongitudinalController] invalid algorithm");
   }
 
   control_cmd_pub_ = create_publisher<autoware_control_msgs::msg::Control>(
@@ -129,7 +110,7 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
   // Timer
   {
     const auto period_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::duration<double>(ctrl_period));
+      std::chrono::duration<double>(config.ctrl_period));
     timer_control_ = rclcpp::create_timer(
       this, get_clock(), period_ns, std::bind(&Controller::callbackTimerControl, this));
   }
@@ -137,23 +118,6 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
   logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
 
   published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
-}
-
-Controller::LateralControllerMode Controller::getLateralControllerMode(
-  const std::string & controller_mode) const
-{
-  if (controller_mode == "mpc") return LateralControllerMode::MPC;
-  if (controller_mode == "pure_pursuit") return LateralControllerMode::PURE_PURSUIT;
-
-  return LateralControllerMode::INVALID;
-}
-
-Controller::LongitudinalControllerMode Controller::getLongitudinalControllerMode(
-  const std::string & controller_mode) const
-{
-  if (controller_mode == "pid") return LongitudinalControllerMode::PID;
-
-  return LongitudinalControllerMode::INVALID;
 }
 
 void Controller::check_cyclic_message_timeout(diagnostic_updater::DiagnosticStatusWrapper & stat)

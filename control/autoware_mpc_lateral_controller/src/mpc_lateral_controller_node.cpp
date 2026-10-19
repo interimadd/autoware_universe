@@ -27,7 +27,47 @@
 namespace autoware::motion::control::mpc_lateral_controller
 {
 
-MpcLateralControllerConfig MpcLateralControllerNode::createConfig(rclcpp::Node & node)
+MPCParam MpcLateralControllerNode::declareMPCparameters(rclcpp::Node & node)
+{
+  MPCParam mpc_param;
+  mpc_param.prediction_horizon = node.declare_parameter<int>("mpc_prediction_horizon");
+  mpc_param.prediction_dt = node.declare_parameter<double>("mpc_prediction_dt");
+
+  const auto dp = [&](const auto & param) { return node.declare_parameter<double>(param); };
+
+  auto & nw = mpc_param.nominal_weight;
+  nw.lat_error = dp("mpc_weight_lat_error");
+  nw.heading_error = dp("mpc_weight_heading_error");
+  nw.heading_error_squared_vel = dp("mpc_weight_heading_error_squared_vel");
+  nw.steering_input = dp("mpc_weight_steering_input");
+  nw.steering_input_squared_vel = dp("mpc_weight_steering_input_squared_vel");
+  nw.lat_jerk = dp("mpc_weight_lat_jerk");
+  nw.steer_rate = dp("mpc_weight_steer_rate");
+  nw.steer_acc = dp("mpc_weight_steer_acc");
+  nw.terminal_lat_error = dp("mpc_weight_terminal_lat_error");
+  nw.terminal_heading_error = dp("mpc_weight_terminal_heading_error");
+
+  auto & lcw = mpc_param.low_curvature_weight;
+  lcw.lat_error = dp("mpc_low_curvature_weight_lat_error");
+  lcw.heading_error = dp("mpc_low_curvature_weight_heading_error");
+  lcw.heading_error_squared_vel = dp("mpc_low_curvature_weight_heading_error_squared_vel");
+  lcw.steering_input = dp("mpc_low_curvature_weight_steering_input");
+  lcw.steering_input_squared_vel = dp("mpc_low_curvature_weight_steering_input_squared_vel");
+  lcw.lat_jerk = dp("mpc_low_curvature_weight_lat_jerk");
+  lcw.steer_rate = dp("mpc_low_curvature_weight_steer_rate");
+  lcw.steer_acc = dp("mpc_low_curvature_weight_steer_acc");
+  mpc_param.low_curvature_thresh_curvature = dp("mpc_low_curvature_thresh_curvature");
+
+  mpc_param.zero_ff_steer_deg = dp("mpc_zero_ff_steer_deg");
+  mpc_param.acceleration_limit = dp("mpc_acceleration_limit");
+  mpc_param.velocity_time_constant = dp("mpc_velocity_time_constant");
+  mpc_param.min_prediction_length = dp("mpc_min_prediction_length");
+
+  return mpc_param;
+}
+
+MpcLateralControllerConfig MpcLateralControllerNode::createConfig(
+  rclcpp::Node & node, const trajectory_follower::CommonParams & common)
 {
   const auto dp_int = [&](const std::string & s) { return node.declare_parameter<int>(s); };
   const auto dp_bool = [&](const std::string & s) { return node.declare_parameter<bool>(s); };
@@ -35,7 +75,7 @@ MpcLateralControllerConfig MpcLateralControllerNode::createConfig(rclcpp::Node &
 
   MpcLateralControllerConfig config;
 
-  config.ctrl_period = node.get_parameter("ctrl_period").as_double();
+  config.ctrl_period = common.ctrl_period;
 
   auto & p_filt = config.trajectory_filtering;
   p_filt.enable_path_smoothing = dp_bool("enable_path_smoothing");
@@ -111,29 +151,12 @@ MpcLateralControllerConfig MpcLateralControllerNode::createConfig(rclcpp::Node &
   config.error_deriv_lpf_cutoff_hz = dp_double("error_deriv_lpf_cutoff_hz");
 
   // ego nearest index search
-  const auto check_and_get_param = [&](const auto & param) {
-    return node.has_parameter(param) ? node.get_parameter(param).as_double() : dp_double(param);
-  };
-  config.ego_nearest_dist_threshold = check_and_get_param("ego_nearest_dist_threshold");
-  config.ego_nearest_yaw_threshold = check_and_get_param("ego_nearest_yaw_threshold");
+  config.ego_nearest_dist_threshold = common.ego_nearest_dist_threshold;
+  config.ego_nearest_yaw_threshold = common.ego_nearest_yaw_threshold;
 
   config.use_delayed_initial_state = dp_bool("use_delayed_initial_state");
 
-  // trajectory_reference_mode is declared at controller_node level
-  // If not available, declare it with default value for standalone usage
-  const auto trajectory_reference_mode =
-    node.has_parameter("trajectory_reference_mode")
-      ? node.get_parameter("trajectory_reference_mode").as_string()
-      : node.declare_parameter<std::string>("trajectory_reference_mode", "spatial");
-
-  if (trajectory_reference_mode == "temporal") {
-    config.use_temporal_trajectory = true;
-  } else if (trajectory_reference_mode == "spatial") {
-    config.use_temporal_trajectory = false;
-  } else {
-    throw std::invalid_argument(
-      "Invalid trajectory_reference_mode. Expected \"spatial\" or \"temporal\".");
-  }
+  config.use_temporal_trajectory = common.use_temporal_trajectory;
 
   config.publish_debug_trajectories = dp_bool("publish_debug_trajectories");
 
@@ -142,15 +165,15 @@ MpcLateralControllerConfig MpcLateralControllerNode::createConfig(rclcpp::Node &
 
   return config;
 }
-
 MpcLateralControllerNode::MpcLateralControllerNode(
-  rclcpp::Node & node, std::shared_ptr<diagnostic_updater::Updater> diag_updater)
+  rclcpp::Node & node, const MpcLateralControllerConfig & config,
+  std::shared_ptr<diagnostic_updater::Updater> diag_updater)
 : clock_(node.get_clock()),
   logger_(node.get_logger().get_child("lateral_controller")),
   writer_(logger_, clock_),
   diag_updater_(diag_updater)
 {
-  m_controller = std::make_unique<MpcLateralController>(createConfig(node), writer_);
+  m_controller = std::make_unique<MpcLateralController>(config, writer_);
 
   m_pub_predicted_traj = node.create_publisher<Trajectory>("~/output/predicted_trajectory", 1);
   m_pub_predicted_traj_frenet =
@@ -218,45 +241,6 @@ void MpcLateralControllerNode::setStatus(diagnostic_updater::DiagnosticStatusWra
     const std::string error_msg = "MPC failed due to " + mpc_result.reason;
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, error_msg);
   }
-}
-
-MPCParam MpcLateralControllerNode::declareMPCparameters(rclcpp::Node & node)
-{
-  MPCParam mpc_param;
-  mpc_param.prediction_horizon = node.declare_parameter<int>("mpc_prediction_horizon");
-  mpc_param.prediction_dt = node.declare_parameter<double>("mpc_prediction_dt");
-
-  const auto dp = [&](const auto & param) { return node.declare_parameter<double>(param); };
-
-  auto & nw = mpc_param.nominal_weight;
-  nw.lat_error = dp("mpc_weight_lat_error");
-  nw.heading_error = dp("mpc_weight_heading_error");
-  nw.heading_error_squared_vel = dp("mpc_weight_heading_error_squared_vel");
-  nw.steering_input = dp("mpc_weight_steering_input");
-  nw.steering_input_squared_vel = dp("mpc_weight_steering_input_squared_vel");
-  nw.lat_jerk = dp("mpc_weight_lat_jerk");
-  nw.steer_rate = dp("mpc_weight_steer_rate");
-  nw.steer_acc = dp("mpc_weight_steer_acc");
-  nw.terminal_lat_error = dp("mpc_weight_terminal_lat_error");
-  nw.terminal_heading_error = dp("mpc_weight_terminal_heading_error");
-
-  auto & lcw = mpc_param.low_curvature_weight;
-  lcw.lat_error = dp("mpc_low_curvature_weight_lat_error");
-  lcw.heading_error = dp("mpc_low_curvature_weight_heading_error");
-  lcw.heading_error_squared_vel = dp("mpc_low_curvature_weight_heading_error_squared_vel");
-  lcw.steering_input = dp("mpc_low_curvature_weight_steering_input");
-  lcw.steering_input_squared_vel = dp("mpc_low_curvature_weight_steering_input_squared_vel");
-  lcw.lat_jerk = dp("mpc_low_curvature_weight_lat_jerk");
-  lcw.steer_rate = dp("mpc_low_curvature_weight_steer_rate");
-  lcw.steer_acc = dp("mpc_low_curvature_weight_steer_acc");
-  mpc_param.low_curvature_thresh_curvature = dp("mpc_low_curvature_thresh_curvature");
-
-  mpc_param.zero_ff_steer_deg = dp("mpc_zero_ff_steer_deg");
-  mpc_param.acceleration_limit = dp("mpc_acceleration_limit");
-  mpc_param.velocity_time_constant = dp("mpc_velocity_time_constant");
-  mpc_param.min_prediction_length = dp("mpc_min_prediction_length");
-
-  return mpc_param;
 }
 
 rcl_interfaces::msg::SetParametersResult MpcLateralControllerNode::paramCallback(

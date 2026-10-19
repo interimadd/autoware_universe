@@ -26,25 +26,17 @@ namespace autoware::motion::control::pid_longitudinal_controller
 {
 namespace
 {
-PidLongitudinalControllerConfig create_config(rclcpp::Node & node)
+}  // namespace
+
+PidLongitudinalControllerConfig PidLongitudinalControllerNode::createConfig(
+  rclcpp::Node & node, const trajectory_follower::CommonParams & common)
 {
   PidLongitudinalControllerConfig config{};
 
   // parameters timer
-  config.longitudinal_ctrl_period = node.get_parameter("ctrl_period").as_double();
+  config.longitudinal_ctrl_period = common.ctrl_period;
 
-  const auto trajectory_reference_mode =
-    node.has_parameter("trajectory_reference_mode")
-      ? node.get_parameter("trajectory_reference_mode").as_string()
-      : node.declare_parameter<std::string>("trajectory_reference_mode", "spatial");
-  if (trajectory_reference_mode == "temporal") {
-    config.use_temporal_trajectory = true;
-  } else if (trajectory_reference_mode == "spatial") {
-    config.use_temporal_trajectory = false;
-  } else {
-    throw std::invalid_argument(
-      "Invalid trajectory_reference_mode. Expected \"spatial\" or \"temporal\".");
-  }
+  config.use_temporal_trajectory = common.use_temporal_trajectory;
 
   config.wheel_base =
     autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo().wheel_base_m;
@@ -194,26 +186,20 @@ PidLongitudinalControllerConfig create_config(rclcpp::Node & node)
   }
 
   // ego nearest index search
-  config.ego_nearest_dist_threshold =
-    node.has_parameter("ego_nearest_dist_threshold")
-      ? node.get_parameter("ego_nearest_dist_threshold").as_double()
-      : node.declare_parameter<double>("ego_nearest_dist_threshold");  // [m]
-  config.ego_nearest_yaw_threshold =
-    node.has_parameter("ego_nearest_yaw_threshold")
-      ? node.get_parameter("ego_nearest_yaw_threshold").as_double()
-      : node.declare_parameter<double>("ego_nearest_yaw_threshold");  // [rad]
+  config.ego_nearest_dist_threshold = common.ego_nearest_dist_threshold;
+  config.ego_nearest_yaw_threshold = common.ego_nearest_yaw_threshold;
 
   return config;
 }
-}  // namespace
 
 PidLongitudinalControllerNode::PidLongitudinalControllerNode(
-  rclcpp::Node & node, std::shared_ptr<diagnostic_updater::Updater> diag_updater)
+  rclcpp::Node & node, const PidLongitudinalControllerConfig & config,
+  std::shared_ptr<diagnostic_updater::Updater> diag_updater)
 : node_parameters_(node.get_node_parameters_interface()),
   clock_(node.get_clock()),
   logger_(node.get_logger().get_child("longitudinal_controller")),
-  config(create_config(node)),
-  controller_(config)
+  config_(config),
+  controller_(config_)
 {
   using std::placeholders::_1;
 
@@ -249,11 +235,11 @@ rcl_interfaces::msg::SetParametersResult PidLongitudinalControllerNode::paramCal
   };
 
   // delay compensation
-  update_param("delay_compensation_time", config.delay_compensation_time);
+  update_param("delay_compensation_time", config_.delay_compensation_time);
 
   // state transition
   {
-    auto & p = config.state_transition_params;
+    auto & p = config_.state_transition_params;
     update_param("drive_state_stop_dist", p.drive_state_stop_dist);
     update_param("stopping_state_stop_dist", p.stopping_state_stop_dist);
     update_param("stopped_state_entry_duration_time", p.stopped_state_entry_duration_time);
@@ -264,14 +250,14 @@ rcl_interfaces::msg::SetParametersResult PidLongitudinalControllerNode::paramCal
 
   // drive state
   {
-    auto & gains = config.pid_gains;
+    auto & gains = config_.pid_gains;
     update_param("kp", gains.kp);
     update_param("ki", gains.ki);
     update_param("kd", gains.kd);
 
-    update_param("lpf_vel_error_gain", config.lpf_vel_error_gain);
+    update_param("lpf_vel_error_gain", config_.lpf_vel_error_gain);
 
-    auto & limits = config.pid_limits;
+    auto & limits = config_.pid_limits;
     update_param("max_out", limits.max_out);
     update_param("min_out", limits.min_out);
     update_param("max_p_effort", limits.max_p_effort);
@@ -282,16 +268,16 @@ rcl_interfaces::msg::SetParametersResult PidLongitudinalControllerNode::paramCal
     update_param("min_d_effort", limits.min_d_effort);
 
     update_param(
-      "current_vel_threshold_pid_integration", config.current_vel_threshold_pid_integrate);
+      "current_vel_threshold_pid_integration", config_.current_vel_threshold_pid_integrate);
     update_param(
-      "time_threshold_before_pid_integration", config.time_threshold_before_pid_integrate);
-    update_param("ff_scale_min", config.ff_scale_min);
-    update_param("ff_scale_max", config.ff_scale_max);
+      "time_threshold_before_pid_integration", config_.time_threshold_before_pid_integrate);
+    update_param("ff_scale_min", config_.ff_scale_min);
+    update_param("ff_scale_max", config_.ff_scale_max);
   }
 
   // stopping state
   {
-    auto & p = config.smooth_stop_params;
+    auto & p = config_.smooth_stop_params;
     update_param("smooth_stop_max_strong_acc", p.max_strong_acc);
     update_param("smooth_stop_min_strong_acc", p.min_strong_acc);
     update_param("smooth_stop_weak_acc", p.weak_acc);
@@ -307,37 +293,37 @@ rcl_interfaces::msg::SetParametersResult PidLongitudinalControllerNode::paramCal
 
   // stop state
   {
-    auto & p = config.stopped_state_params;
+    auto & p = config_.stopped_state_params;
     update_param("stopped_vel", p.vel);
     update_param("stopped_acc", p.acc);
   }
 
   // emergency state
   {
-    auto & p = config.emergency_state_params;
+    auto & p = config_.emergency_state_params;
     update_param("emergency_vel", p.vel);
     update_param("emergency_acc", p.acc);
     update_param("emergency_jerk", p.jerk);
   }
 
   // acceleration feedback
-  update_param("acc_feedback_gain", config.acc_feedback_gain);
-  update_param("lpf_acc_error_gain", config.lpf_acc_error_gain);
+  update_param("acc_feedback_gain", config_.acc_feedback_gain);
+  update_param("lpf_acc_error_gain", config_.lpf_acc_error_gain);
 
   // acceleration limit
-  update_param("min_acc", config.min_acc);
+  update_param("min_acc", config_.min_acc);
 
   // jerk limit
-  update_param("max_jerk", config.max_jerk);
-  update_param("min_jerk", config.min_jerk);
-  update_param("max_acc_cmd_diff", config.max_acc_cmd_diff);
+  update_param("max_jerk", config_.max_jerk);
+  update_param("min_jerk", config_.min_jerk);
+  update_param("max_acc_cmd_diff", config_.max_acc_cmd_diff);
 
   // slope compensation
-  update_param("max_pitch_rad", config.max_pitch_rad);
-  update_param("min_pitch_rad", config.min_pitch_rad);
-  update_param("adaptive_trajectory_velocity_th", config.adaptive_trajectory_velocity_th);
+  update_param("max_pitch_rad", config_.max_pitch_rad);
+  update_param("min_pitch_rad", config_.min_pitch_rad);
+  update_param("adaptive_trajectory_velocity_th", config_.adaptive_trajectory_velocity_th);
 
-  controller_.setConfig(config);
+  controller_.setConfig(config_);
 
   rcl_interfaces::msg::SetParametersResult result;
   result.successful = true;

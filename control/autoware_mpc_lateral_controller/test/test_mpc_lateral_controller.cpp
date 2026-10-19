@@ -340,15 +340,11 @@ protected:
 
     // Provided by the trajectory follower node in production.
     options.append_parameter_override("steer_offset_param_name", "steer_offset");
-    options.append_parameter_override("ego_nearest_dist_threshold", 3.0);
-    options.append_parameter_override("ego_nearest_yaw_threshold", 1.046);
     options.append_parameter_override("vehicle_model_type", controller_options.vehicle_model_type);
     options.append_parameter_override(
       "use_steer_prediction", controller_options.use_steer_prediction);
     options.append_parameter_override(
       "keep_steer_control_until_converged", controller_options.keep_steer_control_until_converged);
-    options.append_parameter_override(
-      "trajectory_reference_mode", controller_options.trajectory_reference_mode);
     options.append_parameter_override(
       "steering_offset.enable_auto_steering_offset_removal",
       controller_options.enable_auto_steering_offset_removal);
@@ -395,10 +391,16 @@ protected:
     // built from, and a test may build several controllers and compare their commands.
     node_ = nodes_.emplace_back(
       std::make_shared<rclcpp::Node>("test_node", make_node_options(controller_options)));
-    // The trajectory follower node declares this one before building the controller.
-    node_->declare_parameter<double>("ctrl_period", ctrl_period);
+    // The trajectory follower node declares these before building the controller.
+    autoware::motion::control::trajectory_follower::CommonParams common;
+    common.ctrl_period = ctrl_period;
+    common.use_temporal_trajectory = controller_options.trajectory_reference_mode == "temporal";
+    common.ego_nearest_dist_threshold = 3.0;
+    common.ego_nearest_yaw_threshold = 1.046;
+
     auto diag_updater = std::make_shared<diagnostic_updater::Updater>(node_.get());
-    return std::make_unique<MpcLateralControllerNode>(*node_, diag_updater);
+    return std::make_unique<MpcLateralControllerNode>(
+      *node_, MpcLateralControllerNode::createConfig(*node_, common), diag_updater);
   }
 
   /// Some of the behaviours below only appear after the controller has run for a while,

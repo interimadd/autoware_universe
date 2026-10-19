@@ -17,6 +17,7 @@
 
 #include "autoware/mpc_lateral_controller/mpc_lateral_controller.hpp"
 #include "autoware/mpc_lateral_controller/ros_log_writer.hpp"
+#include "autoware/trajectory_follower_base/common_params.hpp"
 #include "autoware/trajectory_follower_base/lateral_controller_base.hpp"
 #include "rclcpp/rclcpp.hpp"
 
@@ -44,15 +45,19 @@ using geometry_msgs::msg::PoseStamped;
 class MpcLateralControllerNode : public trajectory_follower::LateralControllerBase
 {
 public:
-  /// \param node Reference to the node used only for the component and parameter initialization.
-  explicit MpcLateralControllerNode(
-    rclcpp::Node & node, std::shared_ptr<diagnostic_updater::Updater> diag_updater);
+  /// \param node Reference to the node used only for the publishers and the parameter callback.
+  /// \param config Everything the controller reads to set itself up.
+  MpcLateralControllerNode(
+    rclcpp::Node & node, const MpcLateralControllerConfig & config,
+    std::shared_ptr<diagnostic_updater::Updater> diag_updater);
   ~MpcLateralControllerNode() = default;
 
-  void set_steering_offset(double offset) override { m_controller->set_steering_offset(offset); }
-
   /// Read the parameters the controller needs from the node, declaring them on it.
-  static MpcLateralControllerConfig createConfig(rclcpp::Node & node);
+  /// \param common The settings the owning node declared and shares between controllers.
+  static MpcLateralControllerConfig createConfig(
+    rclcpp::Node & node, const trajectory_follower::CommonParams & common);
+
+  void set_steering_offset(double offset) override { m_controller->set_steering_offset(offset); }
 
 private:
   bool isReady(const trajectory_follower::InputData & input_data) override;

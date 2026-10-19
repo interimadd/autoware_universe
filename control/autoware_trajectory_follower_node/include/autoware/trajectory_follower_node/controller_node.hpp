@@ -112,16 +112,6 @@ private:
   geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr current_accel_ptr_;
   OperationModeState::ConstSharedPtr current_operation_mode_ptr_;
 
-  enum class LateralControllerMode {
-    INVALID = 0,
-    MPC = 1,
-    PURE_PURSUIT = 2,
-  };
-  enum class LongitudinalControllerMode {
-    INVALID = 0,
-    PID = 1,
-  };
-
   /**
    * @brief compute control command, and publish periodically
    */
@@ -130,9 +120,6 @@ private:
   bool processData(rclcpp::Clock & clock);
   bool isTimeOut(const LongitudinalOutput & lon_out, const LateralOutput & lat_out);
   void check_cyclic_message_timeout(diagnostic_updater::DiagnosticStatusWrapper & stat);
-  LateralControllerMode getLateralControllerMode(const std::string & algorithm_name) const;
-  LongitudinalControllerMode getLongitudinalControllerMode(
-    const std::string & algorithm_name) const;
   void publishDebugMarker(
     const trajectory_follower::InputData & input_data,
     const trajectory_follower::LateralOutput & lat_out) const;
