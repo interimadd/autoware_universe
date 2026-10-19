@@ -32,20 +32,6 @@ struct LongitudinalOutput
   Longitudinal control_cmd;
   LongitudinalHorizon control_cmd_horizon;
 };
-class LongitudinalControllerBase
-{
-public:
-  virtual bool isReady(const InputData & input_data) = 0;
-  virtual LongitudinalOutput run(InputData const & input_data) = 0;
-  void sync(LateralSyncData const & lateral_sync_data);
-  // NOTE: This reset function should be called when the trajectory is replanned by changing ego
-  // pose or goal pose.
-  void reset();
-
-protected:
-  LateralSyncData lateral_sync_data_;
-};
-
 }  // namespace autoware::motion::control::trajectory_follower
 
 #endif  // AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LONGITUDINAL_CONTROLLER_BASE_HPP_
