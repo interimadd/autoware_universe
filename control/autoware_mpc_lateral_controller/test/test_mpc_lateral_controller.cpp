@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/mpc_lateral_controller/mpc_lateral_controller_node.hpp"
+#include "mpc_config_from_node.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
-#include <diagnostic_updater/diagnostic_updater.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "autoware_planning_msgs/msg/trajectory.hpp"
@@ -33,7 +32,8 @@
 
 namespace
 {
-using autoware::motion::control::mpc_lateral_controller::MpcLateralControllerNode;
+using autoware::motion::control::mpc_lateral_controller::createMpcConfigFromNode;
+using autoware::motion::control::mpc_lateral_controller::MpcLateralController;
 using autoware::motion::control::trajectory_follower::InputData;
 using autoware::motion::control::trajectory_follower::LateralController;
 using autoware::motion::control::trajectory_follower::LateralOutput;
@@ -405,9 +405,9 @@ protected:
     common.ego_nearest_dist_threshold = 3.0;
     common.ego_nearest_yaw_threshold = 1.046;
 
-    auto diag_updater = std::make_shared<diagnostic_updater::Updater>(node_.get());
-    return std::make_unique<MpcLateralControllerNode>(
-      *node_, MpcLateralControllerNode::createConfig(*node_, common), diag_updater);
+    return std::make_unique<MpcLateralController>(
+      createMpcConfigFromNode(*node_, common),
+      autoware::motion::control::mpc_lateral_controller::no_log);
   }
 
   /// Some of the behaviours below only appear after the controller has run for a while,

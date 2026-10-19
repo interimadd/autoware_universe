@@ -14,39 +14,47 @@
 
 #include "autoware/trajectory_follower_node/ros_controller_factory.hpp"
 
-#include "autoware/mpc_lateral_controller/mpc_lateral_controller_node.hpp"
-#include "autoware/pid_longitudinal_controller/pid_longitudinal_controller_node.hpp"
-#include "autoware/pure_pursuit/autoware_pure_pursuit_lateral_controller_node.hpp"
+#include "io/mpc_io.hpp"
+#include "io/pid_io.hpp"
+#include "io/pure_pursuit_io.hpp"
 
 #include <memory>
+#include <utility>
 
 namespace autoware::motion::control::trajectory_follower_node
 {
-std::unique_ptr<trajectory_follower::LateralController> createLateralController(
+ControllerWithIo<trajectory_follower::LateralController> createLateralController(
   const TrajectoryFollowerConfig & config, rclcpp::Node & node,
-  const std::shared_ptr<diagnostic_updater::Updater> & diag_updater)
+  const std::shared_ptr<diagnostic_updater::Updater> & diag_updater,
+  const mpc_lateral_controller::LogWriter & writer)
 {
   switch (config.lateral_controller_kind) {
-    case LateralControllerKind::Mpc:
-      return std::make_unique<mpc_lateral_controller::MpcLateralControllerNode>(
-        node, config.mpc, diag_updater);
-    case LateralControllerKind::PurePursuit:
-      return std::make_unique<pure_pursuit::PurePursuitLateralControllerNode>(
-        node, config.pure_pursuit);
+    case LateralControllerKind::Mpc: {
+      auto controller = std::make_unique<MpcLateralController>(config.mpc, writer);
+      auto io = std::make_unique<MpcIo>(node, *controller, diag_updater);
+      return {std::move(controller), std::move(io)};
+    }
+    case LateralControllerKind::PurePursuit: {
+      auto controller = std::make_unique<PurePursuitLateralController>(config.pure_pursuit);
+      auto io = std::make_unique<PurePursuitIo>(node, *controller);
+      return {std::move(controller), std::move(io)};
+    }
   }
-  return nullptr;
+  return {};
 }
 
-std::unique_ptr<trajectory_follower::LongitudinalController> createLongitudinalController(
+ControllerWithIo<trajectory_follower::LongitudinalController> createLongitudinalController(
   const TrajectoryFollowerConfig & config, rclcpp::Node & node,
   const std::shared_ptr<diagnostic_updater::Updater> & diag_updater)
 {
   switch (config.longitudinal_controller_kind) {
-    case LongitudinalControllerKind::Pid:
-      return std::make_unique<pid_longitudinal_controller::PidLongitudinalControllerNode>(
-        node, config.pid, diag_updater);
+    case LongitudinalControllerKind::Pid: {
+      auto controller = std::make_unique<PidLongitudinalController>(config.pid);
+      auto io = std::make_unique<PidIo>(node, *controller, config.pid, diag_updater);
+      return {std::move(controller), std::move(io)};
+    }
   }
-  return nullptr;
+  return {};
 }
 
 }  // namespace autoware::motion::control::trajectory_follower_node

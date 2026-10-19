@@ -21,7 +21,6 @@ ament_auto_add_library(${PROJECT_NAME}_core SHARED
 # autoware_pure_pursuit
 ament_auto_add_library(${PROJECT_NAME}_lateral_controller SHARED
   src/${PROJECT_NAME}/${PROJECT_NAME}_lateral_controller.cpp
-  src/${PROJECT_NAME}/${PROJECT_NAME}_lateral_controller_node.cpp
   src/${PROJECT_NAME}/${PROJECT_NAME}_viz.cpp
 )
 
@@ -29,12 +28,6 @@ target_link_libraries(${PROJECT_NAME}_lateral_controller
   ${PROJECT_NAME}_core
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}_lateral_controller
-  PLUGIN "autoware::pure_pursuit::PurePursuitLateralControllerNode"
-  EXECUTABLE ${PROJECT_NAME}_lateral_controller_exe
-)
-
 ament_auto_package(INSTALL_TO_SHARE
-  launch
   config
 )

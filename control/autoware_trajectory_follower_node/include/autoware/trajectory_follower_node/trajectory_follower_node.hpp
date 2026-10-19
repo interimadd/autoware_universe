@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__TRAJECTORY_FOLLOWER_NODE__TRAJECTORY_FOLLOWER_NODE_HPP_
 #define AUTOWARE__TRAJECTORY_FOLLOWER_NODE__TRAJECTORY_FOLLOWER_NODE_HPP_
 
+#include "autoware/trajectory_follower_node/controller_io.hpp"
+#include "autoware/trajectory_follower_node/ros_log_writer.hpp"
 #include "autoware/trajectory_follower_node/trajectory_follower.hpp"
 #include "autoware/trajectory_follower_node/visibility_control.hpp"
 #include "autoware_utils/ros/logger_level_configure.hpp"
@@ -35,6 +37,7 @@
 
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace autoware::motion::control::trajectory_follower_node
 {
@@ -58,7 +61,14 @@ private:
   std::shared_ptr<diagnostic_updater::Updater>
     diag_updater_;  // Diagnostic updater for publishing diagnostic data.
 
+  /// Declared before the follower so that it outlives the controller that writes to it.
+  std::unique_ptr<RosLogWriter> log_writer_;
+
   std::unique_ptr<TrajectoryFollower> trajectory_follower_;
+
+  /// The ROS side of the two controllers: their topics, logs, diagnostics and runtime
+  /// parameters. The controllers themselves know none of this.
+  std::vector<std::unique_ptr<ControllerIo>> controller_io_;
 
   // Subscribers
   autoware_utils::InterProcessPollingSubscriber<autoware_planning_msgs::msg::Trajectory>

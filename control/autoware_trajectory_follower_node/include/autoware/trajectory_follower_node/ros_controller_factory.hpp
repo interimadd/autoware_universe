@@ -15,8 +15,10 @@
 #ifndef AUTOWARE__TRAJECTORY_FOLLOWER_NODE__ROS_CONTROLLER_FACTORY_HPP_
 #define AUTOWARE__TRAJECTORY_FOLLOWER_NODE__ROS_CONTROLLER_FACTORY_HPP_
 
+#include "autoware/mpc_lateral_controller/log_writer.hpp"
 #include "autoware/trajectory_follower_base/lateral_controller.hpp"
 #include "autoware/trajectory_follower_base/longitudinal_controller.hpp"
+#include "autoware/trajectory_follower_node/controller_io.hpp"
 #include "autoware/trajectory_follower_node/trajectory_follower_config.hpp"
 #include "rclcpp/rclcpp.hpp"
 
@@ -26,14 +28,24 @@
 
 namespace autoware::motion::control::trajectory_follower_node
 {
-/// Build the lateral controller the config names, wrapped in the node layer that publishes
-/// what a cycle produced, writes its log lines and reports its diagnostics.
-std::unique_ptr<trajectory_follower::LateralController> createLateralController(
-  const TrajectoryFollowerConfig & config, rclcpp::Node & node,
-  const std::shared_ptr<diagnostic_updater::Updater> & diag_updater);
+/// A controller and the ROS side that writes out what it produced. The controller is
+/// handed to the TrajectoryFollower; the io stays with the node, which calls publish()
+/// after each cycle that produced a command.
+template <typename Controller>
+struct ControllerWithIo
+{
+  std::unique_ptr<Controller> controller;
+  std::unique_ptr<ControllerIo> io;
+};
 
-/// Build the longitudinal controller the config names, wrapped in the same way.
-std::unique_ptr<trajectory_follower::LongitudinalController> createLongitudinalController(
+/// \param writer Where the lateral controller reports what it meets. It has to outlive
+///        the controller this returns.
+ControllerWithIo<trajectory_follower::LateralController> createLateralController(
+  const TrajectoryFollowerConfig & config, rclcpp::Node & node,
+  const std::shared_ptr<diagnostic_updater::Updater> & diag_updater,
+  const mpc_lateral_controller::LogWriter & writer);
+
+ControllerWithIo<trajectory_follower::LongitudinalController> createLongitudinalController(
   const TrajectoryFollowerConfig & config, rclcpp::Node & node,
   const std::shared_ptr<diagnostic_updater::Updater> & diag_updater);
 

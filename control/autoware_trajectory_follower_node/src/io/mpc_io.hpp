@@ -12,13 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__MPC_LATERAL_CONTROLLER__MPC_LATERAL_CONTROLLER_NODE_HPP_
-#define AUTOWARE__MPC_LATERAL_CONTROLLER__MPC_LATERAL_CONTROLLER_NODE_HPP_
+#ifndef IO__MPC_IO_HPP_
+#define IO__MPC_IO_HPP_
 
 #include "autoware/mpc_lateral_controller/mpc_lateral_controller.hpp"
-#include "autoware/mpc_lateral_controller/ros_log_writer.hpp"
-#include "autoware/trajectory_follower_base/common_params.hpp"
-#include "autoware/trajectory_follower_base/lateral_controller.hpp"
+#include "autoware/trajectory_follower_node/controller_io.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 #include <diagnostic_updater/diagnostic_updater.hpp>
@@ -29,54 +27,38 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 
 #include <memory>
-#include <string>
-#include <utility>
 #include <vector>
 
-namespace autoware::motion::control::mpc_lateral_controller
+namespace autoware::motion::control::trajectory_follower_node
 {
 using autoware_internal_debug_msgs::msg::Float32MultiArrayStamped;
 using autoware_internal_debug_msgs::msg::Float32Stamped;
 using autoware_planning_msgs::msg::Trajectory;
 using geometry_msgs::msg::PoseStamped;
+using mpc_lateral_controller::MpcLateralController;
+using mpc_lateral_controller::MpcLateralControllerResult;
+using mpc_lateral_controller::MPCParam;
 
-/// The node side of the lateral controller. It declares the parameters, builds the
-/// controller from them, publishes what a cycle produced and writes what it reported.
-class MpcLateralControllerNode : public trajectory_follower::LateralController
+/// The topics, the diagnostic and the runtime parameters of the MPC lateral controller.
+/// The controller itself knows none of them.
+class MpcIo : public ControllerIo
 {
 public:
-  /// \param node Reference to the node used only for the publishers and the parameter callback.
-  /// \param config Everything the controller reads to set itself up.
-  MpcLateralControllerNode(
-    rclcpp::Node & node, const MpcLateralControllerConfig & config,
-    std::shared_ptr<diagnostic_updater::Updater> diag_updater);
-  ~MpcLateralControllerNode() = default;
+  /// \param node The node that owns the topics and the parameters.
+  /// \param controller The controller whose output is written out. It has to outlive this.
+  MpcIo(
+    rclcpp::Node & node, MpcLateralController & controller,
+    const std::shared_ptr<diagnostic_updater::Updater> & diag_updater);
 
-  /// Read the parameters the controller needs from the node, declaring them on it.
-  /// \param common The settings the owning node declared and shares between controllers.
-  static MpcLateralControllerConfig createConfig(
-    rclcpp::Node & node, const trajectory_follower::CommonParams & common);
+  void publish() override;
 
 private:
-  tl::expected<trajectory_follower::LateralOutput, std::string> run(
-    const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp) override;
-
-  void publish(const MpcLateralControllerResult & result);
-
   void setStatus(diagnostic_updater::DiagnosticStatusWrapper & stat);
-
-  /// Declare the parameters of the optimisation, which can be changed while the node runs.
-  static MPCParam declareMPCparameters(rclcpp::Node & node);
 
   rcl_interfaces::msg::SetParametersResult paramCallback(
     const std::vector<rclcpp::Parameter> & parameters);
 
-  rclcpp::Clock::SharedPtr clock_;
-  rclcpp::Logger logger_;
-
-  RosLogWriter writer_;
-
-  std::unique_ptr<MpcLateralController> m_controller;
+  MpcLateralController & controller_;
   std::shared_ptr<diagnostic_updater::Updater> diag_updater_;
   rclcpp::Node::OnSetParametersCallbackHandle::SharedPtr m_set_param_res;
 
@@ -89,6 +71,7 @@ private:
   rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr m_pub_debug_values;
   rclcpp::Publisher<Float32Stamped>::SharedPtr m_pub_steer_offset;
 };
-}  // namespace autoware::motion::control::mpc_lateral_controller
 
-#endif  // AUTOWARE__MPC_LATERAL_CONTROLLER__MPC_LATERAL_CONTROLLER_NODE_HPP_
+}  // namespace autoware::motion::control::trajectory_follower_node
+
+#endif  // IO__MPC_IO_HPP_

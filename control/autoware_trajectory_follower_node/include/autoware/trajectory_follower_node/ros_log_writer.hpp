@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__MPC_LATERAL_CONTROLLER__ROS_LOG_WRITER_HPP_
-#define AUTOWARE__MPC_LATERAL_CONTROLLER__ROS_LOG_WRITER_HPP_
+#ifndef AUTOWARE__TRAJECTORY_FOLLOWER_NODE__ROS_LOG_WRITER_HPP_
+#define AUTOWARE__TRAJECTORY_FOLLOWER_NODE__ROS_LOG_WRITER_HPP_
 
 #include "autoware/mpc_lateral_controller/log_writer.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -21,12 +21,10 @@
 #include <string_view>
 #include <utility>
 
-// Nothing in this file is specific to this package, apart from the namespace below. To use
-// the file in another package, copy it, change the namespace and the include path above,
-// and let the include guard hook fix the guard.
-
-namespace autoware::motion::control::mpc_lateral_controller
+namespace autoware::motion::control::trajectory_follower_node
 {
+using mpc_lateral_controller::LogWriter;
+
 /// Writes each line to a logger of ROS, and drops a line whose level the logger does not
 /// take. The waiting time comes from the clock the node was built with.
 class RosLogWriter : public LogWriter
@@ -46,6 +44,6 @@ private:
   rclcpp::Logger logger_;
   rclcpp::Clock::SharedPtr clock_;
 };
-}  // namespace autoware::motion::control::mpc_lateral_controller
+}  // namespace autoware::motion::control::trajectory_follower_node
 
-#endif  // AUTOWARE__MPC_LATERAL_CONTROLLER__ROS_LOG_WRITER_HPP_
+#endif  // AUTOWARE__TRAJECTORY_FOLLOWER_NODE__ROS_LOG_WRITER_HPP_

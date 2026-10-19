@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/mpc_lateral_controller/ros_log_writer.hpp"
+#include "autoware/trajectory_follower_node/ros_log_writer.hpp"
 
 #include <rcutils/logging.h>
 
 #include <string_view>
 
-namespace autoware::motion::control::mpc_lateral_controller
+namespace autoware::motion::control::trajectory_follower_node
 {
 bool RosLogWriter::shouldWrite(const Level level, const double after_s, double & last_sent_s) const
 {
@@ -62,4 +62,4 @@ int RosLogWriter::severityOf(const Level level)
   }
   return RCUTILS_LOG_SEVERITY_DEBUG;
 }
-}  // namespace autoware::motion::control::mpc_lateral_controller
+}  // namespace autoware::motion::control::trajectory_follower_node

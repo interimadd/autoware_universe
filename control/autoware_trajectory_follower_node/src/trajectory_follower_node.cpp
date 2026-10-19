@@ -38,9 +38,16 @@ TrajectoryFollowerNode::TrajectoryFollowerNode(const rclcpp::NodeOptions & node_
   diag_updater_->add(
     "incoming_message_timeout", this, &TrajectoryFollowerNode::check_cyclic_message_timeout);
 
+  log_writer_ =
+    std::make_unique<RosLogWriter>(get_logger().get_child("lateral_controller"), get_clock());
+
+  auto lateral = createLateralController(config, *this, diag_updater_, *log_writer_);
+  auto longitudinal = createLongitudinalController(config, *this, diag_updater_);
+  controller_io_.push_back(std::move(lateral.io));
+  controller_io_.push_back(std::move(longitudinal.io));
+
   trajectory_follower_ = std::make_unique<TrajectoryFollower>(
-    config, createLateralController(config, *this, diag_updater_),
-    createLongitudinalController(config, *this, diag_updater_));
+    config, std::move(lateral.controller), std::move(longitudinal.controller));
 
   control_cmd_pub_ = create_publisher<autoware_control_msgs::msg::Control>(
     "~/output/control_cmd", rclcpp::QoS{1}.transient_local());
@@ -176,6 +183,11 @@ void TrajectoryFollowerNode::callbackTimerControl()
 
   // 5. publish control command
   control_cmd_pub_->publish(result->control_cmd);
+
+  // 5.5. let each controller write out what its cycle produced
+  for (const auto & io : controller_io_) {
+    io->publish();
+  }
 
   // 6. publish debug
   published_time_publisher_->publish_if_subscribed(control_cmd_pub_, result->control_cmd.stamp);
