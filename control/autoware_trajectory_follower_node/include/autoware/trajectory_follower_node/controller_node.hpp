@@ -18,7 +18,7 @@
 #include "autoware/pid_longitudinal_controller/pid_longitudinal_controller.hpp"
 #include "autoware/trajectory_follower_base/control_horizon.hpp"
 #include "autoware/trajectory_follower_base/lateral_controller_base.hpp"
-#include "autoware/trajectory_follower_base/longitudinal_controller_base.hpp"
+#include "autoware/trajectory_follower_base/longitudinal_output.hpp"
 #include "autoware/trajectory_follower_node/visibility_control.hpp"
 #include "autoware_utils/ros/logger_level_configure.hpp"
 #include "autoware_utils/ros/polling_subscriber.hpp"

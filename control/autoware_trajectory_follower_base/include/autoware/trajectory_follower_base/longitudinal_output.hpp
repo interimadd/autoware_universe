@@ -12,17 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LONGITUDINAL_CONTROLLER_BASE_HPP_
-#define AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LONGITUDINAL_CONTROLLER_BASE_HPP_
+#ifndef AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LONGITUDINAL_OUTPUT_HPP_
+#define AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LONGITUDINAL_OUTPUT_HPP_
 
 #include "autoware/trajectory_follower_base/control_horizon.hpp"
-#include "autoware/trajectory_follower_base/input_data.hpp"
-#include "autoware/trajectory_follower_base/sync_data.hpp"
-#include "rclcpp/rclcpp.hpp"
 
 #include "autoware_control_msgs/msg/longitudinal.hpp"
-
-#include <boost/optional.hpp>
 
 namespace autoware::motion::control::trajectory_follower
 {
@@ -34,4 +29,4 @@ struct LongitudinalOutput
 };
 }  // namespace autoware::motion::control::trajectory_follower
 
-#endif  // AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LONGITUDINAL_CONTROLLER_BASE_HPP_
+#endif  // AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LONGITUDINAL_OUTPUT_HPP_

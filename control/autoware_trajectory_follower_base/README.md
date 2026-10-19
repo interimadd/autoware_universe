@@ -8,19 +8,17 @@ This is the design document for the `trajectory_follower` package.
 <!-- Things to consider:
     - Why did we implement this feature? -->
 
-This package provides the interface of longitudinal and lateral controllers used by the node of the `autoware_trajectory_follower_node` package.
-We can implement a detailed controller by deriving the longitudinal and lateral base interfaces.
+This package provides the lateral controller interface used by the node of the `autoware_trajectory_follower_node` package, and the data types shared between that node and the controllers.
+We can implement a detailed lateral controller by deriving the lateral base interface.
 
 ## Design
 
-There are lateral and longitudinal base interface classes and each algorithm inherits from this class to implement.
-The interface class has the following base functions.
+Each lateral algorithm inherits from `LateralControllerBase` to implement the following functions.
 
 - `isReady()`: Check if the control is ready to compute.
 - `run()`: Compute control commands and return to [Trajectory Follower Nodes](../autoware_trajectory_follower_node/README.md). This must be implemented by inherited algorithms.
-- `sync()`: Input the result of running the lateral controller into the longitudinal controller.
-  - steer angle convergence
-    - allow keeping stopped until steer is converged.
+
+The longitudinal controller has no base interface. The node calls [autoware_pid_longitudinal_controller](../autoware_pid_longitudinal_controller/README.md) directly, and hands it the steer convergence reported by the lateral controller in the previous cycle.
 
 See [the Design of Trajectory Follower Nodes](../autoware_trajectory_follower_node/README.md#Design) for how these functions work in the node.
 
