@@ -30,6 +30,8 @@ struct InputData
   autoware_vehicle_msgs::msg::SteeringReport current_steering;
   geometry_msgs::msg::AccelWithCovarianceStamped current_accel;
   autoware_adapi_v1_msgs::msg::OperationModeState current_operation_mode;
+  /// Latest value seen on ~/input/steering_offset_update. Only MPC reads it.
+  double steering_offset{0.0};
 };
 }  // namespace autoware::motion::control::trajectory_follower
 

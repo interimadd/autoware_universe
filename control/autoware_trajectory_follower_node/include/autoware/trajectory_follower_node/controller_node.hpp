@@ -122,6 +122,7 @@ private:
   autoware_vehicle_msgs::msg::SteeringReport::ConstSharedPtr current_steering_ptr_;
   geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr current_accel_ptr_;
   OperationModeState::ConstSharedPtr current_operation_mode_ptr_;
+  double steering_offset_{0.0};
 
   enum class LateralControllerMode {
     INVALID = 0,
