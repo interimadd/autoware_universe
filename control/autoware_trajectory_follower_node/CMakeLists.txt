@@ -42,6 +42,12 @@ autoware_agnocast_wrapper_register_node(${SIMPLE_TRAJECTORY_FOLLOWER_NODE}
 )
 
 if(BUILD_TESTING)
+  # Unit test of the core logic. It starts no ROS 2 context.
+  ament_add_gtest(test_trajectory_follower
+    test/test_trajectory_follower.cpp
+  )
+  target_link_libraries(test_trajectory_follower ${TRAJECTORY_FOLLOWER})
+
   set(TRAJECTORY_FOLLOWER_NODES_TEST test_trajectory_follower_node)
   ament_add_ros_isolated_gtest(${TRAJECTORY_FOLLOWER_NODES_TEST}
     test/trajectory_follower_test_utils.hpp

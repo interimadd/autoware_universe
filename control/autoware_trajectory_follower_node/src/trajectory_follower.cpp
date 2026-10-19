@@ -17,6 +17,7 @@
 #include <autoware_utils/system/stop_watch.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -86,9 +87,11 @@ std::optional<ControlHorizon> mergeLatLonHorizon(
   // If both horizons have multiple controls, align the time steps and zero-order hold the controls.
   // calculate greatest common divisor of time steps
   const auto gcd_double = [](const double a, const double b) {
-    const double precision = 1e9;
-    const int int_a = static_cast<int>(round(a * precision));
-    const int int_b = static_cast<int>(round(b * precision));
+    // int64_t, not int: a time step of 100 ms scaled by the precision is 1e11, which does
+    // not fit in an int, and the gcd of the two overflowed values is meaningless.
+    constexpr double precision = 1e9;
+    const int64_t int_a = static_cast<int64_t>(round(a * precision));
+    const int64_t int_b = static_cast<int64_t>(round(b * precision));
     return static_cast<double>(std::gcd(int_a, int_b)) / precision;
   };
   const double time_step_ms =
