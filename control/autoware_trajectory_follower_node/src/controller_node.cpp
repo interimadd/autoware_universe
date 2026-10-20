@@ -15,7 +15,6 @@
 #include "autoware/trajectory_follower_node/controller_node.hpp"
 
 #include "autoware/mpc_lateral_controller/mpc_lateral_controller_node.hpp"
-#include "autoware/pid_longitudinal_controller/pid_longitudinal_controller_node.hpp"
 #include "autoware/pure_pursuit/autoware_pure_pursuit_lateral_controller.hpp"
 #include "autoware_utils/ros/marker_helper.hpp"
 
@@ -53,8 +52,7 @@ namespace autoware::motion::control::trajectory_follower_node
 {
 Controller::Controller(const rclcpp::NodeOptions & node_options)
 : Node("controller", node_options),
-  diag_updater_(std::make_shared<diagnostic_updater::Updater>(this)),
-  longitudinal_logger_(get_logger().get_child("longitudinal_controller"))
+  diag_updater_(std::make_shared<diagnostic_updater::Updater>(this))
 {
   using std::placeholders::_1;
 
@@ -92,10 +90,11 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
   if (declare_parameter<std::string>("longitudinal_controller_mode") != "pid") {
     throw std::domain_error("[LongitudinalController] invalid algorithm");
   }
-  longitudinal_config_ =
-    pid_longitudinal_controller::create_pid_longitudinal_controller_config(*this);
+  longitudinal_config_ = pid_longitudinal_controller::create_config(*this);
   longitudinal_controller_ =
     std::make_unique<pid_longitudinal_controller::PidLongitudinalController>(longitudinal_config_);
+  longitudinal_reporter_ =
+    std::make_unique<pid_longitudinal_controller::PidLongitudinalControllerReporter>(*this);
   set_param_res_ =
     add_on_set_parameters_callback(std::bind(&Controller::onSetParameters, this, _1));
 
@@ -107,13 +106,6 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
     create_publisher<Float64Stamped>("~/longitudinal/debug/processing_time_ms", 1);
   debug_marker_pub_ =
     create_publisher<visualization_msgs::msg::MarkerArray>("~/output/debug_marker", rclcpp::QoS{1});
-  pub_slope_ = create_publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>(
-    "~/output/slope_angle", rclcpp::QoS{1});
-  pub_longitudinal_diagnostic_ =
-    create_publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>(
-      "~/output/longitudinal_diagnostic", rclcpp::QoS{1});
-  pub_virtual_wall_marker_ =
-    create_publisher<visualization_msgs::msg::MarkerArray>("~/virtual_wall", rclcpp::QoS{1});
 
   sub_steering_offset_update_ =
     create_subscription<autoware_internal_debug_msgs::msg::Float32Stamped>(
@@ -152,8 +144,7 @@ Controller::LateralControllerMode Controller::getLateralControllerMode(
 rcl_interfaces::msg::SetParametersResult Controller::onSetParameters(
   const std::vector<rclcpp::Parameter> & parameters)
 {
-  pid_longitudinal_controller::update_pid_longitudinal_controller_config(
-    longitudinal_config_, parameters);
+  pid_longitudinal_controller::update_config(longitudinal_config_, parameters);
   longitudinal_controller_->setConfig(longitudinal_config_);
 
   rcl_interfaces::msg::SetParametersResult result;
@@ -298,8 +289,7 @@ void Controller::callbackTimerControl()
   // 4. carry the lateral result over to the next cycle of the longitudinal controller
   is_steer_converged_ = lat_out.sync_data.is_steer_converged;
   longitudinal_control_state_ = lon_result.control_state;
-  emitLongitudinalLogs(lon_result);
-  publishLongitudinalDebug(lon_result);
+  longitudinal_reporter_->report(lon_result);
 
   const auto & lon_out = lon_result.output;
 
@@ -325,30 +315,6 @@ void Controller::callbackTimerControl()
     if (control_horizon.has_value()) {
       control_cmd_horizon_pub_->publish(control_horizon.value());
     }
-  }
-}
-
-void Controller::emitLongitudinalLogs(
-  const pid_longitudinal_controller::PidLongitudinalControllerResult & result)
-{
-  if (result.received_invalid_trajectory) {
-    RCLCPP_ERROR_THROTTLE(
-      longitudinal_logger_, *get_clock(), 3000, "received invalid trajectory. ignore.");
-  }
-  if (result.emergency_stop_reason) {
-    RCLCPP_ERROR(
-      longitudinal_logger_, "Emergency Stop since %s", result.emergency_stop_reason->c_str());
-  }
-}
-
-void Controller::publishLongitudinalDebug(
-  const pid_longitudinal_controller::PidLongitudinalControllerResult & result) const
-{
-  pub_longitudinal_diagnostic_->publish(result.debug_message);
-  pub_slope_->publish(result.slope_message);
-
-  if (result.virtual_wall_marker) {
-    pub_virtual_wall_marker_->publish(*result.virtual_wall_marker);
   }
 }
 

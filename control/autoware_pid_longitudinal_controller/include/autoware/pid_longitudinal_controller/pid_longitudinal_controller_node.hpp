@@ -18,19 +18,48 @@
 #include "autoware/pid_longitudinal_controller/pid_longitudinal_controller.hpp"
 #include "rclcpp/rclcpp.hpp"
 
+#include "autoware_internal_debug_msgs/msg/float32_multi_array_stamped.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
+
 #include <vector>
 
 namespace autoware::motion::control::pid_longitudinal_controller
 {
 /// \brief declare every longitudinal control parameter on the node and read it into a config
 /// \param [in,out] node node that owns the parameters of the longitudinal controller
-PidLongitudinalControllerConfig create_pid_longitudinal_controller_config(rclcpp::Node & node);
+PidLongitudinalControllerConfig create_config(rclcpp::Node & node);
 
 /// \brief apply the parameters changed at runtime to an existing config
 /// \param [in,out] config config to update in place
 /// \param [in] parameters parameters given to the set-parameters callback of the node
-void update_pid_longitudinal_controller_config(
+void update_config(
   PidLongitudinalControllerConfig & config, const std::vector<rclcpp::Parameter> & parameters);
+
+/// \class PidLongitudinalControllerReporter
+/// \brief publishes the debug topics of the longitudinal controller and emits its critical logs.
+/// It is a one-way sink: it takes the result of a control cycle and never feeds the control
+/// logic, so the node that owns the control loop keeps calling PidLongitudinalController itself.
+class PidLongitudinalControllerReporter
+{
+public:
+  /// \param [in,out] node node that owns the debug topics of the longitudinal controller
+  explicit PidLongitudinalControllerReporter(rclcpp::Node & node);
+
+  /// \brief publish the debug data and the virtual wall marker of this cycle, if any, and emit
+  ///        the critical logs the core logic raised during it
+  /// \param [in] result output of the core control logic for this cycle
+  void report(const PidLongitudinalControllerResult & result);
+
+private:
+  rclcpp::Clock::SharedPtr clock_;
+  rclcpp::Logger logger_;
+
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
+    pub_slope_;
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
+    pub_diagnostic_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_virtual_wall_marker_;
+};
 }  // namespace autoware::motion::control::pid_longitudinal_controller
 
 #endif  // AUTOWARE__PID_LONGITUDINAL_CONTROLLER__PID_LONGITUDINAL_CONTROLLER_NODE_HPP_

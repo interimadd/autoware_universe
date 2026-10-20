@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__TRAJECTORY_FOLLOWER_NODE__CONTROLLER_NODE_HPP_
 #define AUTOWARE__TRAJECTORY_FOLLOWER_NODE__CONTROLLER_NODE_HPP_
 
-#include "autoware/pid_longitudinal_controller/pid_longitudinal_controller.hpp"
+#include "autoware/pid_longitudinal_controller/pid_longitudinal_controller_node.hpp"
 #include "autoware/trajectory_follower_base/control_horizon.hpp"
 #include "autoware/trajectory_follower_base/lateral_controller_base.hpp"
 #include "autoware/trajectory_follower_base/longitudinal_output.hpp"
@@ -31,7 +31,6 @@
 
 #include "autoware_control_msgs/msg/control.hpp"
 #include "autoware_control_msgs/msg/control_horizon.hpp"
-#include "autoware_internal_debug_msgs/msg/float32_multi_array_stamped.hpp"
 #include "autoware_planning_msgs/msg/trajectory.hpp"
 #include "geometry_msgs/msg/accel_with_covariance_stamped.hpp"
 #include "nav_msgs/msg/odometry.hpp"
@@ -81,9 +80,10 @@ private:
   std::shared_ptr<trajectory_follower::LateralControllerBase> lateral_controller_;
 
   // Longitudinal control. The core logic is called directly, without a ROS wrapper in between.
-  rclcpp::Logger longitudinal_logger_;
   pid_longitudinal_controller::PidLongitudinalControllerConfig longitudinal_config_{};
   std::unique_ptr<pid_longitudinal_controller::PidLongitudinalController> longitudinal_controller_;
+  std::unique_ptr<pid_longitudinal_controller::PidLongitudinalControllerReporter>
+    longitudinal_reporter_;
   rclcpp::Node::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
   /// steer convergence of the previous cycle, handed to the longitudinal controller
   bool is_steer_converged_{false};
@@ -116,11 +116,6 @@ private:
   rclcpp::Publisher<Float64Stamped>::SharedPtr pub_processing_time_lon_ms_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_marker_pub_;
   rclcpp::Publisher<autoware_control_msgs::msg::ControlHorizon>::SharedPtr control_cmd_horizon_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
-    pub_slope_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
-    pub_longitudinal_diagnostic_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_virtual_wall_marker_;
 
   autoware_planning_msgs::msg::Trajectory::ConstSharedPtr current_trajectory_ptr_;
   nav_msgs::msg::Odometry::ConstSharedPtr current_odometry_ptr_;
@@ -146,19 +141,6 @@ private:
   LateralControllerMode getLateralControllerMode(const std::string & algorithm_name) const;
   rcl_interfaces::msg::SetParametersResult onSetParameters(
     const std::vector<rclcpp::Parameter> & parameters);
-  /**
-   * @brief publish the debug data and the virtual wall marker created by the longitudinal
-   *        controller during this cycle, if any
-   * @param [in] result output of the longitudinal core logic for this cycle
-   */
-  void publishLongitudinalDebug(
-    const pid_longitudinal_controller::PidLongitudinalControllerResult & result) const;
-  /**
-   * @brief emit the critical logs raised by the longitudinal core logic during this cycle
-   * @param [in] result output of the longitudinal core logic for this cycle
-   */
-  void emitLongitudinalLogs(
-    const pid_longitudinal_controller::PidLongitudinalControllerResult & result);
   void publishDebugMarker(
     const trajectory_follower::InputData & input_data,
     const trajectory_follower::LateralOutput & lat_out) const;

@@ -23,7 +23,7 @@
 
 namespace autoware::motion::control::pid_longitudinal_controller
 {
-PidLongitudinalControllerConfig create_pid_longitudinal_controller_config(rclcpp::Node & node)
+PidLongitudinalControllerConfig create_config(rclcpp::Node & node)
 {
   PidLongitudinalControllerConfig config{};
 
@@ -203,7 +203,7 @@ PidLongitudinalControllerConfig create_pid_longitudinal_controller_config(rclcpp
   return config;
 }
 
-void update_pid_longitudinal_controller_config(
+void update_config(
   PidLongitudinalControllerConfig & config, const std::vector<rclcpp::Parameter> & parameters)
 {
   auto update_param = [&](const std::string & name, double & v) {
@@ -307,4 +307,32 @@ void update_pid_longitudinal_controller_config(
   update_param("adaptive_trajectory_velocity_th", config.adaptive_trajectory_velocity_th);
 }
 
+PidLongitudinalControllerReporter::PidLongitudinalControllerReporter(rclcpp::Node & node)
+: clock_(node.get_clock()), logger_(node.get_logger().get_child("longitudinal_controller"))
+{
+  pub_slope_ = node.create_publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>(
+    "~/output/slope_angle", rclcpp::QoS{1});
+  pub_diagnostic_ =
+    node.create_publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>(
+      "~/output/longitudinal_diagnostic", rclcpp::QoS{1});
+  pub_virtual_wall_marker_ =
+    node.create_publisher<visualization_msgs::msg::MarkerArray>("~/virtual_wall", rclcpp::QoS{1});
+}
+
+void PidLongitudinalControllerReporter::report(const PidLongitudinalControllerResult & result)
+{
+  if (result.received_invalid_trajectory) {
+    RCLCPP_ERROR_THROTTLE(logger_, *clock_, 3000, "received invalid trajectory. ignore.");
+  }
+  if (result.emergency_stop_reason) {
+    RCLCPP_ERROR(logger_, "Emergency Stop since %s", result.emergency_stop_reason->c_str());
+  }
+
+  pub_diagnostic_->publish(result.debug_message);
+  pub_slope_->publish(result.slope_message);
+
+  if (result.virtual_wall_marker) {
+    pub_virtual_wall_marker_->publish(*result.virtual_wall_marker);
+  }
+}
 }  // namespace autoware::motion::control::pid_longitudinal_controller
