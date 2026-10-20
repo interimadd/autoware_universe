@@ -63,15 +63,25 @@ PurePursuitLateralControllerNode::PurePursuitLateralControllerNode(rclcpp::Node 
   pub_debug_values_ =
     node.create_publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>(
       "~/debug/ld_outputs", rclcpp::QoS{1});
+  pub_processing_time_ms_ =
+    node.create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "~/lateral/debug/processing_time_ms", 1);
 }
 
 tl::expected<trajectory_follower::LateralOutput, std::string> PurePursuitLateralControllerNode::run(
   const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp)
 {
+  stop_watch_.tic();
+
   const auto result = controller_.runDetailed(input_data, stamp);
 
   emitLogs(result);
   publish(result);
+
+  autoware_internal_debug_msgs::msg::Float64Stamped processing_time_ms;
+  processing_time_ms.stamp = stamp;
+  processing_time_ms.data = stop_watch_.toc();
+  pub_processing_time_ms_->publish(processing_time_ms);
 
   return result.output;
 }

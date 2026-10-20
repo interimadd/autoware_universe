@@ -339,6 +339,10 @@ PidLongitudinalControllerNode::PidLongitudinalControllerNode(
   rclcpp::Node & node, diagnostic_updater::Updater & diag_updater)
 : config_(create_config(node)), controller_(config_), reporter_(node)
 {
+  pub_processing_time_ms_ =
+    node.create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "~/longitudinal/debug/processing_time_ms", 1);
+
   diag_updater.add("control_state", this, &PidLongitudinalControllerNode::check_control_state);
 
   set_param_res_ =
@@ -352,10 +356,17 @@ PidLongitudinalControllerNode::run(
   const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp,
   const bool is_steer_converged)
 {
+  stop_watch_.tic();
+
   const auto result = controller_.runDetailed(input_data, stamp, is_steer_converged);
 
   control_state_ = result.control_state;
   reporter_.report(result);
+
+  autoware_internal_debug_msgs::msg::Float64Stamped processing_time_ms;
+  processing_time_ms.stamp = stamp;
+  processing_time_ms.data = stop_watch_.toc();
+  pub_processing_time_ms_->publish(processing_time_ms);
 
   return result.output;
 }

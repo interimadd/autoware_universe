@@ -35,7 +35,6 @@
 #include "nav_msgs/msg/odometry.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
 #include <autoware_internal_debug_msgs/msg/float32_stamped.hpp>
-#include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 
 #include <memory>
 #include <optional>
@@ -54,7 +53,6 @@ namespace trajectory_follower_node
 
 using autoware_adapi_v1_msgs::msg::OperationModeState;
 using autoware_control_msgs::msg::ControlHorizon;
-using autoware_internal_debug_msgs::msg::Float64Stamped;
 
 namespace trajectory_follower = ::autoware::motion::control::trajectory_follower;
 
@@ -100,8 +98,6 @@ private:
   // Publishers
   rclcpp::Publisher<autoware_control_msgs::msg::Control>::SharedPtr control_cmd_pub_;
   rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr predicted_trajectory_pub_;
-  rclcpp::Publisher<Float64Stamped>::SharedPtr pub_processing_time_lat_ms_;
-  rclcpp::Publisher<Float64Stamped>::SharedPtr pub_processing_time_lon_ms_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_marker_pub_;
   rclcpp::Publisher<autoware_control_msgs::msg::ControlHorizon>::SharedPtr control_cmd_horizon_pub_;
 
@@ -125,9 +121,6 @@ private:
   std::unique_ptr<autoware_utils::LoggerLevelConfigure> logger_configure_;
 
   std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
-
-  void publishProcessingTime(
-    const double t_ms, const rclcpp::Publisher<Float64Stamped>::SharedPtr pub);
 
   static constexpr double logger_throttle_interval = 5000;
 };

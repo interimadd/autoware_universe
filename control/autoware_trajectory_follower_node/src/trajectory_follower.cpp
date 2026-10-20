@@ -129,18 +129,14 @@ TrajectoryFollower::TrajectoryFollower(
 tl::expected<TrajectoryFollowerResult, std::string> TrajectoryFollower::run(
   const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp)
 {
-  stop_watch_.tic("lateral");
   const auto lateral_result = lateral_controller_->run(input_data, stamp);
-  const double lateral_processing_time_ms = stop_watch_.toc("lateral");
   if (!lateral_result) {
     return tl::unexpected(lateral_result.error());
   }
 
-  stop_watch_.tic("longitudinal");
   // NOTE: the steer convergence of the previous cycle is handed over, as the removed sync() did.
   const auto longitudinal_result =
     longitudinal_controller_->run(input_data, stamp, is_steer_converged_);
-  const double longitudinal_processing_time_ms = stop_watch_.toc("longitudinal");
 
   // Carry the lateral result over to the next cycle of the longitudinal controller.
   is_steer_converged_ = lateral_result->sync_data.is_steer_converged;
@@ -165,8 +161,6 @@ tl::expected<TrajectoryFollowerResult, std::string> TrajectoryFollower::run(
   result.control_cmd.lateral = lateral_output.control_cmd;
   result.control_cmd.longitudinal = longitudinal_output.control_cmd;
   result.lateral_output = lateral_output;
-  result.lateral_processing_time_ms = lateral_processing_time_ms;
-  result.longitudinal_processing_time_ms = longitudinal_processing_time_ms;
 
   if (config_.enable_control_cmd_horizon) {
     result.control_cmd_horizon = mergeLatLonHorizon(

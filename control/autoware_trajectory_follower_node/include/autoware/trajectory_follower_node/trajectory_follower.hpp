@@ -20,14 +20,12 @@
 #include "autoware/trajectory_follower_base/lateral_controller.hpp"
 #include "autoware/trajectory_follower_base/longitudinal_controller.hpp"
 
-#include <autoware_utils/system/stop_watch.hpp>
 #include <rclcpp/time.hpp>
 #include <tl_expected/expected.hpp>
 
 #include "autoware_control_msgs/msg/control.hpp"
 #include "autoware_control_msgs/msg/control_horizon.hpp"
 
-#include <chrono>
 #include <memory>
 #include <optional>
 #include <string>
@@ -60,9 +58,6 @@ struct TrajectoryFollowerResult
   /// What the lateral controller reported. It carries the predicted trajectory, which the
   /// command itself does not hold.
   trajectory_follower::LateralOutput lateral_output;
-
-  double lateral_processing_time_ms{0.0};
-  double longitudinal_processing_time_ms{0.0};
 };
 
 /// Merge a lateral and a longitudinal horizon into one.
@@ -79,7 +74,8 @@ std::optional<ControlHorizon> mergeLatLonHorizon(
 /// into one vehicle command.
 ///
 /// Nothing here reads a clock, a parameter or a topic, so a caller outside ROS 2 can drive
-/// this class in a loop and evaluate a controller without starting an executor.
+/// this class in a loop and evaluate a controller without starting an executor. The same
+/// input data and the same stamp always produce the same result.
 class TrajectoryFollower
 {
 public:
@@ -102,8 +98,6 @@ private:
 
   /// Steer convergence of the previous cycle, handed to the longitudinal controller.
   bool is_steer_converged_{false};
-
-  autoware_utils::StopWatch<std::chrono::milliseconds> stop_watch_;
 };
 
 }  // namespace autoware::motion::control::trajectory_follower_node

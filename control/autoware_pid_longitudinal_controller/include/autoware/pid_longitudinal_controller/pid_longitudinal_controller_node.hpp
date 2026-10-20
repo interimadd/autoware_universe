@@ -18,11 +18,14 @@
 #include "autoware/pid_longitudinal_controller/pid_longitudinal_controller.hpp"
 #include "rclcpp/rclcpp.hpp"
 
+#include <autoware_utils/system/stop_watch.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 
 #include "autoware_internal_debug_msgs/msg/float32_multi_array_stamped.hpp"
+#include "autoware_internal_debug_msgs/msg/float64_stamped.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
@@ -92,6 +95,11 @@ private:
   ControlState control_state_{ControlState::STOPPED};
 
   rclcpp::Node::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
+
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+    pub_processing_time_ms_;
+
+  autoware_utils::StopWatch<std::chrono::milliseconds> stop_watch_;
 };
 }  // namespace autoware::motion::control::pid_longitudinal_controller
 

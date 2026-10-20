@@ -96,10 +96,6 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
     "~/output/control_cmd", rclcpp::QoS{1}.transient_local());
   predicted_trajectory_pub_ =
     create_publisher<autoware_planning_msgs::msg::Trajectory>("~/output/predicted_trajectory", 1);
-  pub_processing_time_lat_ms_ =
-    create_publisher<Float64Stamped>("~/lateral/debug/processing_time_ms", 1);
-  pub_processing_time_lon_ms_ =
-    create_publisher<Float64Stamped>("~/longitudinal/debug/processing_time_ms", 1);
   debug_marker_pub_ =
     create_publisher<visualization_msgs::msg::MarkerArray>("~/output/debug_marker", rclcpp::QoS{1});
 
@@ -213,24 +209,20 @@ void Controller::callbackTimerControl()
     return;
   }
 
-  // 3. publish how long each controller took
-  publishProcessingTime(result->lateral_processing_time_ms, pub_processing_time_lat_ms_);
-  publishProcessingTime(result->longitudinal_processing_time_ms, pub_processing_time_lon_ms_);
-
-  // 4. update diagnostics
+  // 3. update diagnostics
   diag_updater_->force_update();
 
-  // 5. publish control command and what the lateral controller expects it to achieve
+  // 4. publish control command and what the lateral controller expects it to achieve
   control_cmd_pub_->publish(result->control_cmd);
   if (result->lateral_output.predicted_trajectory) {
     predicted_trajectory_pub_->publish(*result->lateral_output.predicted_trajectory);
   }
 
-  // 6. publish debug
+  // 5. publish debug
   published_time_publisher_->publish_if_subscribed(control_cmd_pub_, result->control_cmd.stamp);
   publishDebugMarker(*input_data, result->lateral_output);
 
-  // 7. publish experimental topic
+  // 6. publish experimental topic
   if (result->control_cmd_horizon) {
     control_cmd_horizon_pub_->publish(*result->control_cmd_horizon);
   }
@@ -262,15 +254,6 @@ void Controller::publishDebugMarker(
   }
 
   debug_marker_pub_->publish(debug_marker_array);
-}
-
-void Controller::publishProcessingTime(
-  const double t_ms, const rclcpp::Publisher<Float64Stamped>::SharedPtr pub)
-{
-  Float64Stamped msg{};
-  msg.stamp = this->now();
-  msg.data = t_ms;
-  pub->publish(msg);
 }
 
 }  // namespace autoware::motion::control::trajectory_follower_node

@@ -151,6 +151,8 @@ MpcLateralControllerNode::MpcLateralControllerNode(
 {
   m_controller = std::make_unique<MpcLateralController>(createConfig(node), writer_);
 
+  m_pub_processing_time_ms =
+    node.create_publisher<Float64Stamped>("~/lateral/debug/processing_time_ms", 1);
   m_pub_predicted_traj_frenet =
     node.create_publisher<Trajectory>("~/debug/predicted_trajectory_in_frenet_coordinate", 1);
   m_pub_resampled_reference_traj =
@@ -173,12 +175,19 @@ MpcLateralControllerNode::MpcLateralControllerNode(
 tl::expected<trajectory_follower::LateralOutput, std::string> MpcLateralControllerNode::run(
   const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp)
 {
+  stop_watch_.tic();
+
   const auto result = m_controller->runDetailed(input_data, stamp);
   if (!result) {
     return tl::unexpected(result.error());
   }
 
   publish(*result);
+
+  Float64Stamped processing_time_ms;
+  processing_time_ms.stamp = stamp;
+  processing_time_ms.data = stop_watch_.toc();
+  m_pub_processing_time_ms->publish(processing_time_ms);
 
   return result->output;
 }
