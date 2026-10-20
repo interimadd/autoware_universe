@@ -320,6 +320,7 @@ PurePursuitLateralControllerResult PurePursuitLateralController::runDetailed(
 
   // calculate predicted trajectory with iterative calculation
   result_.predicted_trajectory = generatePredictedTrajectory();
+  result_.output.predicted_trajectory = result_.predicted_trajectory;
 
   return result_;
 }

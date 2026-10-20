@@ -23,7 +23,9 @@
 #include <tl_expected/expected.hpp>
 
 #include "autoware_control_msgs/msg/lateral.hpp"
+#include "autoware_planning_msgs/msg/trajectory.hpp"
 
+#include <optional>
 #include <string>
 
 namespace autoware::motion::control::trajectory_follower
@@ -34,6 +36,11 @@ struct LateralOutput
   Lateral control_cmd;
   LateralHorizon control_cmd_horizon;
   LateralSyncData sync_data;
+
+  /// What the controller expects the vehicle to follow. The safety checkers downstream read
+  /// it, so it is part of the contract and not a debug output. It holds nothing when the
+  /// controller could not compute it.
+  std::optional<autoware_planning_msgs::msg::Trajectory> predicted_trajectory{std::nullopt};
 };
 
 /// What a lateral controller has to do, and nothing else. One call takes everything the
