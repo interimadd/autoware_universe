@@ -105,7 +105,7 @@ void PidLongitudinalController::setConfig(const PidLongitudinalControllerConfig 
   m_smooth_stop->setParams(config.smooth_stop_params);
 }
 
-PidLongitudinalControllerResult PidLongitudinalController::run(
+PidLongitudinalControllerResult PidLongitudinalController::runDetailed(
   const trajectory_follower::InputData & input_data, const rclcpp::Time & current_time,
   const bool is_steer_converged)
 {

@@ -187,7 +187,7 @@ struct PidLongitudinalControllerResult
 /// \class PidLongitudinalController
 /// \brief generates longitudinal control commands (velocity/acceleration) from a trajectory and
 /// the current vehicle state; no dependency on rclcpp::Node/rclcpp::Logger
-class PidLongitudinalController
+class PidLongitudinalController : public trajectory_follower::LongitudinalController
 {
 public:
   explicit PidLongitudinalController(const PidLongitudinalControllerConfig & config);
@@ -201,11 +201,20 @@ public:
   /// mode
   /// \param [in] current_time time captured once per control cycle by the caller
   /// \param [in] is_steer_converged whether the lateral controller has converged its steering
-  PidLongitudinalControllerResult run(
+  PidLongitudinalControllerResult runDetailed(
     const trajectory_follower::InputData & input_data, const rclcpp::Time & current_time,
     const bool is_steer_converged);
 
 private:
+  /// \brief what the interface asks for, which is the command of runDetailed() and nothing
+  /// else. The controller always produces one, so this never reports an error.
+  tl::expected<trajectory_follower::LongitudinalOutput, std::string> run(
+    const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp,
+    const bool is_steer_converged) override
+  {
+    return runDetailed(input_data, stamp, is_steer_converged).output;
+  }
+
   struct Motion
   {
     double vel{0.0};

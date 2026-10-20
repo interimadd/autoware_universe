@@ -145,7 +145,7 @@ tl::expected<TrajectoryFollowerResult, std::string> TrajectoryFollower::run(
   stop_watch_.tic("longitudinal");
   // NOTE: the steer convergence of the previous cycle is handed over, as the removed sync() did.
   const auto longitudinal_result =
-    longitudinal_controller_->run(input_data, stamp, is_steer_converged_);
+    longitudinal_controller_->runDetailed(input_data, stamp, is_steer_converged_);
   const double longitudinal_processing_time_ms = stop_watch_.toc("longitudinal");
 
   // Carry the lateral result over to the next cycle of the longitudinal controller.
