@@ -124,12 +124,6 @@ private:
   OperationModeState::ConstSharedPtr current_operation_mode_ptr_;
   double steering_offset_{0.0};
 
-  enum class LateralControllerMode {
-    INVALID = 0,
-    MPC = 1,
-    PURE_PURSUIT = 2,
-  };
-
   /**
    * @brief compute control command, and publish periodically
    */
@@ -139,7 +133,6 @@ private:
   bool isTimeOut(const LongitudinalOutput & lon_out, const LateralOutput & lat_out);
   void check_cyclic_message_timeout(diagnostic_updater::DiagnosticStatusWrapper & stat);
   void check_longitudinal_control_state(diagnostic_updater::DiagnosticStatusWrapper & stat);
-  LateralControllerMode getLateralControllerMode(const std::string & algorithm_name) const;
   rcl_interfaces::msg::SetParametersResult onSetParameters(
     const std::vector<rclcpp::Parameter> & parameters);
   void publishDebugMarker(

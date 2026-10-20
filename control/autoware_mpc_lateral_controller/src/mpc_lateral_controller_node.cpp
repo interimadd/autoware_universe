@@ -144,11 +144,10 @@ MpcLateralControllerConfig MpcLateralControllerNode::createConfig(rclcpp::Node &
 }
 
 MpcLateralControllerNode::MpcLateralControllerNode(
-  rclcpp::Node & node, std::shared_ptr<diagnostic_updater::Updater> diag_updater)
+  rclcpp::Node & node, diagnostic_updater::Updater & diag_updater)
 : clock_(node.get_clock()),
   logger_(node.get_logger().get_child("lateral_controller")),
-  writer_(logger_, clock_),
-  diag_updater_(diag_updater)
+  writer_(logger_, clock_)
 {
   m_controller = std::make_unique<MpcLateralController>(createConfig(node), writer_);
 
@@ -169,7 +168,7 @@ MpcLateralControllerNode::MpcLateralControllerNode(
   m_set_param_res = node.add_on_set_parameters_callback(
     std::bind(&MpcLateralControllerNode::paramCallback, this, _1));
 
-  diag_updater_->add("MPC_solve_checker", [&](auto & stat) { setStatus(stat); });
+  diag_updater.add("MPC_solve_checker", [this](auto & stat) { setStatus(stat); });
 }
 
 tl::expected<trajectory_follower::LateralOutput, std::string> MpcLateralControllerNode::run(

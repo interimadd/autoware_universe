@@ -404,8 +404,8 @@ protected:
       std::make_shared<rclcpp::Node>("test_node", make_node_options(controller_options)));
     // The trajectory follower node declares this one before building the controller.
     node_->declare_parameter<double>("ctrl_period", ctrl_period);
-    auto diag_updater = std::make_shared<diagnostic_updater::Updater>(node_.get());
-    return std::make_unique<MpcLateralControllerNode>(*node_, diag_updater);
+    diag_updaters_.push_back(std::make_unique<diagnostic_updater::Updater>(node_.get()));
+    return std::make_unique<MpcLateralControllerNode>(*node_, *diag_updaters_.back());
   }
 
   /// Some of the behaviours below only appear after the controller has run for a while,
@@ -496,6 +496,10 @@ protected:
 
   std::vector<std::shared_ptr<rclcpp::Node>> nodes_;
   std::shared_ptr<rclcpp::Node> node_;
+
+  // Kept alive for the whole test: a controller adds a task to the updater it was built
+  // with, and that task reads the controller.
+  std::vector<std::unique_ptr<diagnostic_updater::Updater>> diag_updaters_;
 
   /// Time the controller reads. Every controller is built with a simulated clock, so a test
   /// sets this time itself.

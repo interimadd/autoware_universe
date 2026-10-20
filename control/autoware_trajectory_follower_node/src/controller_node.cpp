@@ -46,6 +46,23 @@ std::vector<T> resampleHorizonByZeroOrderHold(
   }
   return resampled_horizon;
 }
+
+/// Build the lateral controller a mode names. Every lateral algorithm lives behind the
+/// same interface, so this is the only place that knows which ones exist.
+std::unique_ptr<autoware::motion::control::trajectory_follower::LateralController>
+createLateralController(
+  const std::string & mode, rclcpp::Node & node, diagnostic_updater::Updater & diag_updater)
+{
+  namespace mpc_lateral_controller = autoware::motion::control::mpc_lateral_controller;
+
+  if (mode == "mpc") {
+    return std::make_unique<mpc_lateral_controller::MpcLateralControllerNode>(node, diag_updater);
+  }
+  if (mode == "pure_pursuit") {
+    return std::make_unique<autoware::pure_pursuit::PurePursuitLateralControllerNode>(node);
+  }
+  throw std::domain_error("[LateralController] invalid algorithm: " + mode);
+}
 }  // namespace
 
 namespace autoware::motion::control::trajectory_follower_node
@@ -69,22 +86,8 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
   diag_updater_->add("incoming_message_timeout", this, &Controller::check_cyclic_message_timeout);
   diag_updater_->add("control_state", this, &Controller::check_longitudinal_control_state);
 
-  const auto lateral_controller_mode =
-    getLateralControllerMode(declare_parameter<std::string>("lateral_controller_mode"));
-  switch (lateral_controller_mode) {
-    case LateralControllerMode::MPC: {
-      lateral_controller_ =
-        std::make_unique<mpc_lateral_controller::MpcLateralControllerNode>(*this, diag_updater_);
-      break;
-    }
-    case LateralControllerMode::PURE_PURSUIT: {
-      lateral_controller_ =
-        std::make_unique<autoware::pure_pursuit::PurePursuitLateralControllerNode>(*this);
-      break;
-    }
-    default:
-      throw std::domain_error("[LateralController] invalid algorithm");
-  }
+  lateral_controller_ = createLateralController(
+    declare_parameter<std::string>("lateral_controller_mode"), *this, *diag_updater_);
 
   // PID is the only longitudinal algorithm, so the mode is validated rather than dispatched on.
   if (declare_parameter<std::string>("longitudinal_controller_mode") != "pid") {
@@ -130,15 +133,6 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
   logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
 
   published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
-}
-
-Controller::LateralControllerMode Controller::getLateralControllerMode(
-  const std::string & controller_mode) const
-{
-  if (controller_mode == "mpc") return LateralControllerMode::MPC;
-  if (controller_mode == "pure_pursuit") return LateralControllerMode::PURE_PURSUIT;
-
-  return LateralControllerMode::INVALID;
 }
 
 rcl_interfaces::msg::SetParametersResult Controller::onSetParameters(

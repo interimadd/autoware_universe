@@ -45,8 +45,9 @@ class MpcLateralControllerNode : public trajectory_follower::LateralController
 {
 public:
   /// \param node Reference to the node used only for the component and parameter initialization.
-  explicit MpcLateralControllerNode(
-    rclcpp::Node & node, std::shared_ptr<diagnostic_updater::Updater> diag_updater);
+  /// \param diag_updater The updater of the node, which outlives this object and stays
+  ///        its owner. This class only adds a task to it.
+  MpcLateralControllerNode(rclcpp::Node & node, diagnostic_updater::Updater & diag_updater);
   ~MpcLateralControllerNode() = default;
 
   /// Read the parameters the controller needs from the node, declaring them on it.
@@ -72,7 +73,6 @@ private:
   RosLogWriter writer_;
 
   std::unique_ptr<MpcLateralController> m_controller;
-  std::shared_ptr<diagnostic_updater::Updater> diag_updater_;
   rclcpp::Node::OnSetParametersCallbackHandle::SharedPtr m_set_param_res;
 
   rclcpp::Publisher<Trajectory>::SharedPtr m_pub_predicted_traj;
