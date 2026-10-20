@@ -63,10 +63,6 @@ PurePursuitLateralControllerNode::PurePursuitLateralControllerNode(rclcpp::Node 
   pub_debug_values_ =
     node.create_publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>(
       "~/debug/ld_outputs", rclcpp::QoS{1});
-
-  // Publish predicted trajectory
-  pub_predicted_trajectory_ = node.create_publisher<autoware_planning_msgs::msg::Trajectory>(
-    "~/output/predicted_trajectory", 1);
 }
 
 tl::expected<trajectory_follower::LateralOutput, std::string> PurePursuitLateralControllerNode::run(
@@ -86,9 +82,6 @@ void PurePursuitLateralControllerNode::publish(const PurePursuitLateralControlle
 
   if (result.debug_markers) {
     pub_debug_marker_->publish(*result.debug_markers);
-  }
-  if (result.predicted_trajectory) {
-    pub_predicted_trajectory_->publish(*result.predicted_trajectory);
   }
 }
 
@@ -113,7 +106,7 @@ void PurePursuitLateralControllerNode::emitLogs(const PurePursuitLateralControll
   if (result.prediction_solve_failed) {
     RCLCPP_WARN_THROTTLE(logger_, *clock_, 5000, "failed to solve pure_pursuit for prediction");
   }
-  if (!result.predicted_trajectory) {
+  if (!result.output.predicted_trajectory) {
     RCLCPP_ERROR(logger_, "Failed to generate predicted trajectory.");
   }
 }

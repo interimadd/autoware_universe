@@ -92,7 +92,6 @@ struct PurePursuitLateralControllerResult
 {
   trajectory_follower::LateralOutput output;
   autoware_internal_debug_msgs::msg::Float32MultiArrayStamped lookahead_distance_values;
-  std::optional<Trajectory> predicted_trajectory{std::nullopt};
   std::optional<visualization_msgs::msg::MarkerArray> debug_markers{std::nullopt};
 
   // What the cycle met, which the node layer turns into log lines.

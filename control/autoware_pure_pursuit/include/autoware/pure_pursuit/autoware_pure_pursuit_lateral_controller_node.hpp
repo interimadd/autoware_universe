@@ -20,7 +20,6 @@
 #include "rclcpp/rclcpp.hpp"
 
 #include "autoware_internal_debug_msgs/msg/float32_multi_array_stamped.hpp"
-#include "autoware_planning_msgs/msg/trajectory.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
 
 #include <string>
@@ -54,7 +53,6 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_debug_marker_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
     pub_debug_values_;
-  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr pub_predicted_trajectory_;
 };
 
 }  // namespace autoware::pure_pursuit

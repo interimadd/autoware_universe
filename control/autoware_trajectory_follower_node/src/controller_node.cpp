@@ -91,6 +91,8 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
 
   control_cmd_pub_ = create_publisher<autoware_control_msgs::msg::Control>(
     "~/output/control_cmd", rclcpp::QoS{1}.transient_local());
+  predicted_trajectory_pub_ =
+    create_publisher<autoware_planning_msgs::msg::Trajectory>("~/output/predicted_trajectory", 1);
   pub_processing_time_lat_ms_ =
     create_publisher<Float64Stamped>("~/lateral/debug/processing_time_ms", 1);
   pub_processing_time_lon_ms_ =
@@ -246,8 +248,11 @@ void Controller::callbackTimerControl()
   // 4. update diagnostics
   diag_updater_->force_update();
 
-  // 5. publish control command
+  // 5. publish control command and what the lateral controller expects it to achieve
   control_cmd_pub_->publish(result->control_cmd);
+  if (result->lateral_output.predicted_trajectory) {
+    predicted_trajectory_pub_->publish(*result->lateral_output.predicted_trajectory);
+  }
 
   // 6. publish debug
   published_time_publisher_->publish_if_subscribed(control_cmd_pub_, result->control_cmd.stamp);
