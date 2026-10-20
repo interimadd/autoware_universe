@@ -44,6 +44,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace autoware::pure_pursuit
@@ -108,7 +109,7 @@ struct DebugData
   geometry_msgs::msg::Point next_target;
 };
 
-class PurePursuitLateralController
+class PurePursuitLateralController : public trajectory_follower::LateralController
 {
 public:
   explicit PurePursuitLateralController(const PurePursuitLateralControllerConfig & config);
@@ -117,9 +118,16 @@ public:
    * @brief compute control command for path follow with a constant control period
    * @param input_data input data required for control calculation
    * @param stamp timestamp of this control cycle, captured once by the caller
+   * @return everything the cycle produced. The node layer publishes what this carries
+   *         beside the command.
    */
-  PurePursuitLateralControllerResult run(
+  PurePursuitLateralControllerResult runDetailed(
     const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp);
+
+  /// The command alone, which is what LateralController asks for. This controller always
+  /// produces one, so the error side is never taken.
+  tl::expected<trajectory_follower::LateralOutput, std::string> run(
+    const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp) override;
 
 private:
   PurePursuitLateralControllerConfig config_;

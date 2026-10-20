@@ -41,6 +41,7 @@
 #include <algorithm>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -293,7 +294,13 @@ std::optional<Trajectory> PurePursuitLateralController::generatePredictedTraject
   return predicted_trajectory;
 }
 
-PurePursuitLateralControllerResult PurePursuitLateralController::run(
+tl::expected<trajectory_follower::LateralOutput, std::string> PurePursuitLateralController::run(
+  const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp)
+{
+  return runDetailed(input_data, stamp).output;
+}
+
+PurePursuitLateralControllerResult PurePursuitLateralController::runDetailed(
   const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp)
 {
   result_ = PurePursuitLateralControllerResult();

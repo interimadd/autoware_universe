@@ -117,7 +117,7 @@ struct MpcLateralControllerResult
   Float32Stamped steering_offset;
 };
 
-class MpcLateralController
+class MpcLateralController : public trajectory_follower::LateralController
 {
 public:
   /// \param writer Where the controller reports what it meets. It has to outlive this
@@ -232,10 +232,15 @@ public:
   /**
    * @brief Compute the control command for path following with a constant control period.
    * @param input_data Input data required for control calculation.
-   * @return What the cycle produced, or the reason the controller cannot run yet.
+   * @return Everything the cycle produced, or the reason the controller cannot run yet.
+   *         The node layer publishes what this carries beside the command.
    */
-  tl::expected<MpcLateralControllerResult, std::string> run(
+  tl::expected<MpcLateralControllerResult, std::string> runDetailed(
     trajectory_follower::InputData const & input_data, const rclcpp::Time & stamp);
+
+  /// The command alone, which is what LateralController asks for.
+  tl::expected<trajectory_follower::LateralOutput, std::string> run(
+    const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp) override;
 
 private:
   /**

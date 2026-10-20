@@ -174,7 +174,7 @@ MpcLateralControllerNode::MpcLateralControllerNode(
 tl::expected<trajectory_follower::LateralOutput, std::string> MpcLateralControllerNode::run(
   const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp)
 {
-  const auto result = m_controller->run(input_data, stamp);
+  const auto result = m_controller->runDetailed(input_data, stamp);
   if (!result) {
     return tl::unexpected(result.error());
   }

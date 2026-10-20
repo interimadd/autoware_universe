@@ -72,7 +72,7 @@ PurePursuitLateralControllerNode::PurePursuitLateralControllerNode(rclcpp::Node 
 tl::expected<trajectory_follower::LateralOutput, std::string> PurePursuitLateralControllerNode::run(
   const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp)
 {
-  const auto result = controller_.run(input_data, stamp);
+  const auto result = controller_.runDetailed(input_data, stamp);
 
   emitLogs(result);
   publish(result);
