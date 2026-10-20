@@ -16,7 +16,7 @@
 #define AUTOWARE__PURE_PURSUIT__AUTOWARE_PURE_PURSUIT_LATERAL_CONTROLLER_NODE_HPP_
 
 #include "autoware/pure_pursuit/autoware_pure_pursuit_lateral_controller.hpp"
-#include "autoware/trajectory_follower_base/lateral_controller.hpp"
+#include "autoware/trajectory_follower_base/lateral_controller_interface.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 #include <autoware_utils/system/stop_watch.hpp>
@@ -32,7 +32,7 @@ namespace autoware::pure_pursuit
 {
 /// The node side of the lateral controller. It declares the parameters, builds the
 /// controller from them, publishes what a cycle produced and writes what it reported.
-class PurePursuitLateralControllerNode : public trajectory_follower::LateralController
+class PurePursuitLateralControllerNode : public trajectory_follower::LateralControllerInterface
 {
 public:
   /// \param node Reference to the node used only for the component and parameter initialization.

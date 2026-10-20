@@ -19,7 +19,7 @@
 #include "autoware/pure_pursuit/autoware_pure_pursuit_lateral_controller_node.hpp"
 #include "autoware_utils/ros/marker_helper.hpp"
 
-#include <autoware/trajectory_follower_base/lateral_controller.hpp>
+#include <autoware/trajectory_follower_base/lateral_controller_interface.hpp>
 
 #include <algorithm>
 #include <limits>
@@ -33,7 +33,7 @@ namespace
 {
 /// Build the lateral controller a mode names. Every lateral algorithm lives behind the
 /// same interface, so this is the only place that knows which ones exist.
-std::unique_ptr<autoware::motion::control::trajectory_follower::LateralController>
+std::unique_ptr<autoware::motion::control::trajectory_follower::LateralControllerInterface>
 createLateralController(
   const std::string & mode, rclcpp::Node & node, diagnostic_updater::Updater & diag_updater)
 {
@@ -50,7 +50,7 @@ createLateralController(
 
 /// Build the longitudinal controller a mode names. PID is the only one, but it reaches
 /// the follower through the same interface as the lateral algorithms do.
-std::unique_ptr<autoware::motion::control::trajectory_follower::LongitudinalController>
+std::unique_ptr<autoware::motion::control::trajectory_follower::LongitudinalControllerInterface>
 createLongitudinalController(
   const std::string & mode, rclcpp::Node & node, diagnostic_updater::Updater & diag_updater)
 {

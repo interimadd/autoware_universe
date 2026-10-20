@@ -30,10 +30,10 @@
 namespace
 {
 using autoware::motion::control::trajectory_follower::InputData;
-using autoware::motion::control::trajectory_follower::LateralController;
+using autoware::motion::control::trajectory_follower::LateralControllerInterface;
 using autoware::motion::control::trajectory_follower::LateralHorizon;
 using autoware::motion::control::trajectory_follower::LateralOutput;
-using autoware::motion::control::trajectory_follower::LongitudinalController;
+using autoware::motion::control::trajectory_follower::LongitudinalControllerInterface;
 using autoware::motion::control::trajectory_follower::LongitudinalHorizon;
 using autoware::motion::control::trajectory_follower::LongitudinalOutput;
 using autoware::motion::control::trajectory_follower_node::mergeLatLonHorizon;
@@ -54,7 +54,7 @@ rclcpp::Time make_time(const double seconds)
 
 /// A lateral controller a test drives directly. It reports what it was told to report, so
 /// that a test can say what the lateral side of a cycle produced without running MPC.
-class FakeLateralController : public LateralController
+class FakeLateralController : public LateralControllerInterface
 {
 public:
   tl::expected<LateralOutput, std::string> run(
@@ -85,7 +85,7 @@ public:
 
 /// A longitudinal controller a test drives directly. It records the steer convergence it
 /// was handed, so that a test can say what the follower passed on from the cycle before.
-class FakeLongitudinalController : public LongitudinalController
+class FakeLongitudinalController : public LongitudinalControllerInterface
 {
 public:
   tl::expected<LongitudinalOutput, std::string> run(

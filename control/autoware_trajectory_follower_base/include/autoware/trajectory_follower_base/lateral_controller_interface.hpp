@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LATERAL_CONTROLLER_HPP_
-#define AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LATERAL_CONTROLLER_HPP_
+#ifndef AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LATERAL_CONTROLLER_INTERFACE_HPP_
+#define AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LATERAL_CONTROLLER_INTERFACE_HPP_
 
 #include "autoware/trajectory_follower_base/control_horizon.hpp"
 #include "autoware/trajectory_follower_base/input_data.hpp"
@@ -46,10 +46,10 @@ struct LateralOutput
 /// What a lateral controller has to do, and nothing else. One call takes everything the
 /// controller reads for a cycle and returns everything it produced, so there is no order
 /// a caller has to know.
-class LateralController
+class LateralControllerInterface
 {
 public:
-  virtual ~LateralController() = default;
+  virtual ~LateralControllerInterface() = default;
 
   /// Compute the command for one control cycle.
   /// \param input_data What the vehicle and the planner report for this cycle.
@@ -61,4 +61,4 @@ public:
 
 }  // namespace autoware::motion::control::trajectory_follower
 
-#endif  // AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LATERAL_CONTROLLER_HPP_
+#endif  // AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LATERAL_CONTROLLER_INTERFACE_HPP_

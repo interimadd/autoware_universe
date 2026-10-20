@@ -118,8 +118,8 @@ std::optional<ControlHorizon> mergeLatLonHorizon(
 
 TrajectoryFollower::TrajectoryFollower(
   const TrajectoryFollowerConfig & config,
-  std::unique_ptr<trajectory_follower::LateralController> lateral_controller,
-  std::unique_ptr<trajectory_follower::LongitudinalController> longitudinal_controller)
+  std::unique_ptr<trajectory_follower::LateralControllerInterface> lateral_controller,
+  std::unique_ptr<trajectory_follower::LongitudinalControllerInterface> longitudinal_controller)
 : config_(config),
   lateral_controller_(std::move(lateral_controller)),
   longitudinal_controller_(std::move(longitudinal_controller))

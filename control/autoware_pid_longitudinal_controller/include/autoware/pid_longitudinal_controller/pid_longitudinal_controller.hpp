@@ -21,7 +21,7 @@
 #include "autoware/pid_longitudinal_controller/pid.hpp"
 #include "autoware/pid_longitudinal_controller/smooth_stop.hpp"
 #include "autoware/trajectory_follower_base/input_data.hpp"
-#include "autoware/trajectory_follower_base/longitudinal_controller.hpp"
+#include "autoware/trajectory_follower_base/longitudinal_controller_interface.hpp"
 #include "rclcpp/duration.hpp"
 #include "rclcpp/time.hpp"
 
@@ -187,7 +187,7 @@ struct PidLongitudinalControllerResult
 /// \class PidLongitudinalController
 /// \brief generates longitudinal control commands (velocity/acceleration) from a trajectory and
 /// the current vehicle state; no dependency on rclcpp::Node/rclcpp::Logger
-class PidLongitudinalController : public trajectory_follower::LongitudinalController
+class PidLongitudinalController : public trajectory_follower::LongitudinalControllerInterface
 {
 public:
   explicit PidLongitudinalController(const PidLongitudinalControllerConfig & config);

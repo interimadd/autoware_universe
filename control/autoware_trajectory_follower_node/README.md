@@ -13,10 +13,10 @@ By default, the controller instance with the `Controller` class as follows is us
 ```plantuml
 @startuml
 package autoware_trajectory_follower_base {
-abstract class LateralController {
+abstract class LateralControllerInterface {
 virtual run(InputData, stamp)
 }
-abstract class LongitudinalController {
+abstract class LongitudinalControllerInterface {
 virtual run(InputData, stamp, is_steer_converged)
 }
 
@@ -61,16 +61,16 @@ createInputData(): InputData
 }
 }
 
-MpcLateralControllerNode --|> LateralController
-PurePursuitLateralControllerNode --|> LateralController
-PidLongitudinalControllerNode --|> LongitudinalController
+MpcLateralControllerNode --|> LateralControllerInterface
+PurePursuitLateralControllerNode --|> LateralControllerInterface
+PidLongitudinalControllerNode --|> LongitudinalControllerInterface
 
-LateralSyncData --> LongitudinalController
-InputData ..> LateralController
-InputData ..> LongitudinalController
+LateralSyncData --> LongitudinalControllerInterface
+InputData ..> LateralControllerInterface
+InputData ..> LongitudinalControllerInterface
 
-LateralController --o TrajectoryFollower
-LongitudinalController --o TrajectoryFollower
+LateralControllerInterface --o TrajectoryFollower
+LongitudinalControllerInterface --o TrajectoryFollower
 TrajectoryFollower --o Controller
 InputData ..> Controller
 @enduml

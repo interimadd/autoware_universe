@@ -16,8 +16,8 @@
 #define AUTOWARE__TRAJECTORY_FOLLOWER_NODE__CONTROLLER_NODE_HPP_
 
 #include "autoware/trajectory_follower_base/control_horizon.hpp"
-#include "autoware/trajectory_follower_base/lateral_controller.hpp"
-#include "autoware/trajectory_follower_base/longitudinal_controller.hpp"
+#include "autoware/trajectory_follower_base/lateral_controller_interface.hpp"
+#include "autoware/trajectory_follower_base/longitudinal_controller_interface.hpp"
 #include "autoware/trajectory_follower_node/trajectory_follower.hpp"
 #include "autoware/trajectory_follower_node/visibility_control.hpp"
 #include "autoware_utils/ros/logger_level_configure.hpp"

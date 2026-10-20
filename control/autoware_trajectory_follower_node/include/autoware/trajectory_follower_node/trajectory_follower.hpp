@@ -17,8 +17,8 @@
 
 #include "autoware/trajectory_follower_base/control_horizon.hpp"
 #include "autoware/trajectory_follower_base/input_data.hpp"
-#include "autoware/trajectory_follower_base/lateral_controller.hpp"
-#include "autoware/trajectory_follower_base/longitudinal_controller.hpp"
+#include "autoware/trajectory_follower_base/lateral_controller_interface.hpp"
+#include "autoware/trajectory_follower_base/longitudinal_controller_interface.hpp"
 
 #include <rclcpp/time.hpp>
 #include <tl_expected/expected.hpp>
@@ -81,8 +81,8 @@ class TrajectoryFollower
 public:
   TrajectoryFollower(
     const TrajectoryFollowerConfig & config,
-    std::unique_ptr<trajectory_follower::LateralController> lateral_controller,
-    std::unique_ptr<trajectory_follower::LongitudinalController> longitudinal_controller);
+    std::unique_ptr<trajectory_follower::LateralControllerInterface> lateral_controller,
+    std::unique_ptr<trajectory_follower::LongitudinalControllerInterface> longitudinal_controller);
 
   /// Compute the vehicle command for one control cycle.
   /// \param input_data What the vehicle and the planner report for this cycle.
@@ -93,8 +93,8 @@ public:
 
 private:
   TrajectoryFollowerConfig config_;
-  std::unique_ptr<trajectory_follower::LateralController> lateral_controller_;
-  std::unique_ptr<trajectory_follower::LongitudinalController> longitudinal_controller_;
+  std::unique_ptr<trajectory_follower::LateralControllerInterface> lateral_controller_;
+  std::unique_ptr<trajectory_follower::LongitudinalControllerInterface> longitudinal_controller_;
 
   /// Steer convergence of the previous cycle, handed to the longitudinal controller.
   bool is_steer_converged_{false};

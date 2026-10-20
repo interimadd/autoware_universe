@@ -32,7 +32,7 @@
 
 #include "autoware/pure_pursuit/autoware_pure_pursuit.hpp"
 #include "autoware/trajectory_follower_base/input_data.hpp"
-#include "autoware/trajectory_follower_base/lateral_controller.hpp"
+#include "autoware/trajectory_follower_base/lateral_controller_interface.hpp"
 
 #include <rclcpp/time.hpp>
 
@@ -108,7 +108,7 @@ struct DebugData
   geometry_msgs::msg::Point next_target;
 };
 
-class PurePursuitLateralController : public trajectory_follower::LateralController
+class PurePursuitLateralController : public trajectory_follower::LateralControllerInterface
 {
 public:
   explicit PurePursuitLateralController(const PurePursuitLateralControllerConfig & config);
@@ -123,7 +123,7 @@ public:
   PurePursuitLateralControllerResult runDetailed(
     const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp);
 
-  /// The command alone, which is what LateralController asks for. This controller always
+  /// The command alone, which is what LateralControllerInterface asks for. This controller always
   /// produces one, so the error side is never taken.
   tl::expected<trajectory_follower::LateralOutput, std::string> run(
     const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp) override;

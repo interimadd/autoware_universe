@@ -20,7 +20,7 @@
 #include "autoware/mpc_lateral_controller/mpc.hpp"
 #include "autoware/mpc_lateral_controller/mpc_trajectory.hpp"
 #include "autoware/mpc_lateral_controller/mpc_utils.hpp"
-#include "autoware/trajectory_follower_base/lateral_controller.hpp"
+#include "autoware/trajectory_follower_base/lateral_controller_interface.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 #include <autoware/trajectory_follower_base/control_horizon.hpp>
@@ -117,7 +117,7 @@ struct MpcLateralControllerResult
   Float32Stamped steering_offset;
 };
 
-class MpcLateralController : public trajectory_follower::LateralController
+class MpcLateralController : public trajectory_follower::LateralControllerInterface
 {
 public:
   /// \param writer Where the controller reports what it meets. It has to outlive this
@@ -238,7 +238,7 @@ public:
   tl::expected<MpcLateralControllerResult, std::string> runDetailed(
     trajectory_follower::InputData const & input_data, const rclcpp::Time & stamp);
 
-  /// The command alone, which is what LateralController asks for.
+  /// The command alone, which is what LateralControllerInterface asks for.
   tl::expected<trajectory_follower::LateralOutput, std::string> run(
     const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp) override;
 

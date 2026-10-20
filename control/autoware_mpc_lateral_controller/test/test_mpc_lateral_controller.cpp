@@ -35,7 +35,7 @@ namespace
 {
 using autoware::motion::control::mpc_lateral_controller::MpcLateralControllerNode;
 using autoware::motion::control::trajectory_follower::InputData;
-using autoware::motion::control::trajectory_follower::LateralController;
+using autoware::motion::control::trajectory_follower::LateralControllerInterface;
 using autoware::motion::control::trajectory_follower::LateralOutput;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
@@ -395,7 +395,7 @@ protected:
 
   /// Build the controller behind the base class interface, so that the tests only
   /// exercise the interface the trajectory follower node uses.
-  std::unique_ptr<LateralController> make_controller(
+  std::unique_ptr<LateralControllerInterface> make_controller(
     const ControllerOptions & controller_options = ControllerOptions{})
   {
     // Kept alive for the whole test: a controller holds a reference to the node it was
@@ -418,7 +418,7 @@ protected:
   /// controller reads the clock to decide which commands are too old to keep.
   /// Run one cycle at the time the simulated clock now reads. Every test below is about
   /// the command, so a controller that reports it cannot run is a failure of that test.
-  LateralOutput run_once(LateralController & controller, const InputData & input)
+  LateralOutput run_once(LateralControllerInterface & controller, const InputData & input)
   {
     auto result = controller.run(input, node_->get_clock()->now());
     EXPECT_TRUE(result.has_value()) << "controller could not run: " << result.error();
@@ -426,7 +426,7 @@ protected:
   }
 
   LateralOutput run_cycles(
-    LateralController & controller, const InputData & input, const int cycles)
+    LateralControllerInterface & controller, const InputData & input, const int cycles)
   {
     LateralOutput output;
     for (int cycle = 0; cycle < cycles; ++cycle) {
@@ -447,7 +447,7 @@ protected:
   /// The vehicle follows the path at 1 m/s and reports its steering as straight ahead. No
   /// test that uses this helper needs it anywhere else.
   LateralOutput follow_path_for_cycles(
-    LateralController & controller, const Trajectory & path, const int cycles)
+    LateralControllerInterface & controller, const Trajectory & path, const int cycles)
   {
     LateralOutput output;
     for (int cycle = 0; cycle < cycles; ++cycle) {
@@ -463,7 +463,7 @@ protected:
   /// Drive a curve at speed until the command stops moving, and report the command reached.
   /// Five cycles are enough for the low pass filters inside the controller to settle. The
   /// clock moves on with each cycle, as it does when the vehicle drives.
-  float settle_on_curve(LateralController & controller)
+  float settle_on_curve(LateralControllerInterface & controller)
   {
     const InputData driving = Input().following(left_curve_path()).planned_at(3.0).driving_at(3.0);
     float command = 0.0f;
@@ -481,7 +481,7 @@ protected:
   /// cycle is returned as the measured angle of the next, which is the relation that holds
   /// once the steering of a vehicle has reached the commanded angle. Nothing else about a
   /// vehicle is modelled, so the result does not depend on how quickly one responds.
-  float settle_on_arc(LateralController & controller)
+  float settle_on_arc(LateralControllerInterface & controller)
   {
     const Trajectory path = arc_path(arc_radius);
     float command = 0.0f;

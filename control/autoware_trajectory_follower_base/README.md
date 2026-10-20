@@ -13,13 +13,13 @@ We can implement a detailed controller by deriving the interface of its directio
 
 ## Design
 
-Each lateral algorithm inherits from `LateralController` and implements one function.
+Each lateral algorithm inherits from `LateralControllerInterface` and implements one function.
 
 ```cpp
 tl::expected<LateralOutput, std::string> run(const InputData & input_data, const rclcpp::Time & stamp);
 ```
 
-Each longitudinal algorithm inherits from `LongitudinalController` and implements one function.
+Each longitudinal algorithm inherits from `LongitudinalControllerInterface` and implements one function.
 
 ```cpp
 tl::expected<LongitudinalOutput, std::string> run(const InputData & input_data, const rclcpp::Time & stamp, const bool is_steer_converged);

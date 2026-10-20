@@ -69,7 +69,7 @@ private:
 };
 /// The node side of the longitudinal controller. It declares the parameters, builds the
 /// controller from them, publishes what a cycle produced and reports what it met.
-class PidLongitudinalControllerNode : public trajectory_follower::LongitudinalController
+class PidLongitudinalControllerNode : public trajectory_follower::LongitudinalControllerInterface
 {
 public:
   /// \param node Reference to the node used only for the parameter and topic initialization.
