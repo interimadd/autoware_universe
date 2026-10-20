@@ -159,7 +159,7 @@ std::shared_ptr<QPSolverInterface> MpcLateralController::createQPSolverInterface
   return nullptr;
 }
 
-MpcLateralControllerResult MpcLateralController::run(
+tl::expected<MpcLateralControllerResult, std::string> MpcLateralController::run(
   trajectory_follower::InputData const & input_data, const rclcpp::Time & stamp)
 {
   MpcLateralControllerResult result;
@@ -169,6 +169,16 @@ MpcLateralControllerResult MpcLateralController::run(
 
   m_current_kinematic_state = input_data.current_odometry;
   m_current_steering = input_data.current_steering;
+
+  if (!m_mpc->hasVehicleModel()) {
+    return tl::unexpected<std::string>("MPC does not have a vehicle model");
+  }
+  if (!m_mpc->hasQPSolver()) {
+    return tl::unexpected<std::string>("MPC does not have a QP solver");
+  }
+  if (m_mpc->m_reference_trajectory.empty()) {
+    return tl::unexpected<std::string>("trajectory size is zero.");
+  }
 
   m_steering_offset_target_ = std::invoke([&]() {
     if (!enable_auto_steering_offset_removal_) return 0.0;
@@ -277,28 +287,6 @@ bool MpcLateralController::isSteerConverged(const Lateral & cmd) const
     static_cast<float>(m_converged_steer_rad);
 
   return is_converged;
-}
-
-bool MpcLateralController::isReady(const trajectory_follower::InputData & input_data)
-{
-  setTrajectory(input_data.current_trajectory, input_data.current_odometry);
-  m_current_kinematic_state = input_data.current_odometry;
-  m_current_steering = input_data.current_steering;
-
-  if (!m_mpc->hasVehicleModel()) {
-    AW_MPC_INFO_THROTTLE(writer_, 5.0, "MPC does not have a vehicle model");
-    return false;
-  }
-  if (!m_mpc->hasQPSolver()) {
-    AW_MPC_INFO_THROTTLE(writer_, 5.0, "MPC does not have a QP solver");
-    return false;
-  }
-  if (m_mpc->m_reference_trajectory.empty()) {
-    AW_MPC_INFO_THROTTLE(writer_, 5.0, "trajectory size is zero.");
-    return false;
-  }
-
-  return true;
 }
 
 void MpcLateralController::setTrajectory(

@@ -16,18 +16,20 @@
 #define AUTOWARE__PURE_PURSUIT__AUTOWARE_PURE_PURSUIT_LATERAL_CONTROLLER_NODE_HPP_
 
 #include "autoware/pure_pursuit/autoware_pure_pursuit_lateral_controller.hpp"
-#include "autoware/trajectory_follower_base/lateral_controller_base.hpp"
+#include "autoware/trajectory_follower_base/lateral_controller.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 #include "autoware_internal_debug_msgs/msg/float32_multi_array_stamped.hpp"
 #include "autoware_planning_msgs/msg/trajectory.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
 
+#include <string>
+
 namespace autoware::pure_pursuit
 {
 /// The node side of the lateral controller. It declares the parameters, builds the
 /// controller from them, publishes what a cycle produced and writes what it reported.
-class PurePursuitLateralControllerNode : public trajectory_follower::LateralControllerBase
+class PurePursuitLateralControllerNode : public trajectory_follower::LateralController
 {
 public:
   /// \param node Reference to the node used only for the component and parameter initialization.
@@ -37,10 +39,8 @@ public:
   static PurePursuitLateralControllerConfig createConfig(rclcpp::Node & node);
 
 private:
-  bool isReady(const trajectory_follower::InputData & input_data) override;
-
-  trajectory_follower::LateralOutput run(
-    const trajectory_follower::InputData & input_data) override;
+  tl::expected<trajectory_follower::LateralOutput, std::string> run(
+    const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp) override;
 
   void publish(const PurePursuitLateralControllerResult & result);
 

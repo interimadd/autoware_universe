@@ -18,7 +18,7 @@
 #include "autoware/pure_pursuit/autoware_pure_pursuit_lateral_controller_node.hpp"
 #include "autoware_utils/ros/marker_helper.hpp"
 
-#include <autoware/trajectory_follower_base/lateral_controller_base.hpp>
+#include <autoware/trajectory_follower_base/lateral_controller.hpp>
 
 #include <algorithm>
 #include <limits>
@@ -74,12 +74,12 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
   switch (lateral_controller_mode) {
     case LateralControllerMode::MPC: {
       lateral_controller_ =
-        std::make_shared<mpc_lateral_controller::MpcLateralControllerNode>(*this, diag_updater_);
+        std::make_unique<mpc_lateral_controller::MpcLateralControllerNode>(*this, diag_updater_);
       break;
     }
     case LateralControllerMode::PURE_PURSUIT: {
       lateral_controller_ =
-        std::make_shared<autoware::pure_pursuit::PurePursuitLateralControllerNode>(*this);
+        std::make_unique<autoware::pure_pursuit::PurePursuitLateralControllerNode>(*this);
       break;
     }
     default:
@@ -269,25 +269,24 @@ void Controller::callbackTimerControl()
     return;
   }
 
-  // 2. check if the lateral controller is ready
-  if (!lateral_controller_->isReady(*input_data)) {
+  // 2. run controllers
+  stop_watch_.tic("lateral");
+  const auto lat_result = lateral_controller_->run(*input_data, stamp);
+  publishProcessingTime(stop_watch_.toc("lateral"), pub_processing_time_lat_ms_);
+
+  if (!lat_result) {
     RCLCPP_INFO_THROTTLE(
-      get_logger(), *get_clock(), 5000,
-      "Control is skipped since the lateral controller is not ready to run.");
+      get_logger(), *get_clock(), 5000, "Control is skipped since %s", lat_result.error().c_str());
     return;
   }
-
-  // 3. run controllers
-  stop_watch_.tic("lateral");
-  const auto lat_out = lateral_controller_->run(*input_data);
-  publishProcessingTime(stop_watch_.toc("lateral"), pub_processing_time_lat_ms_);
+  const auto & lat_out = lat_result.value();
 
   stop_watch_.tic("longitudinal");
   // NOTE: the steer convergence of the previous cycle is handed over, as the removed sync() did.
   const auto lon_result = longitudinal_controller_->run(*input_data, stamp, is_steer_converged_);
   publishProcessingTime(stop_watch_.toc("longitudinal"), pub_processing_time_lon_ms_);
 
-  // 4. carry the lateral result over to the next cycle of the longitudinal controller
+  // 3. carry the lateral result over to the next cycle of the longitudinal controller
   is_steer_converged_ = lat_out.sync_data.is_steer_converged;
   longitudinal_control_state_ = lon_result.control_state;
   longitudinal_reporter_->report(lon_result);

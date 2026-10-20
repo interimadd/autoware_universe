@@ -20,7 +20,7 @@
 #include "autoware/mpc_lateral_controller/mpc.hpp"
 #include "autoware/mpc_lateral_controller/mpc_trajectory.hpp"
 #include "autoware/mpc_lateral_controller/mpc_utils.hpp"
-#include "autoware/trajectory_follower_base/lateral_controller_base.hpp"
+#include "autoware/trajectory_follower_base/lateral_controller.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 #include <autoware/trajectory_follower_base/control_horizon.hpp>
@@ -230,18 +230,11 @@ private:
 
 public:
   /**
-   * @brief Check if all necessary data is received and ready to run the control.
-   * @param input_data Input data required for control calculation.
-   * @return True if the data is ready, false otherwise.
-   */
-  bool isReady(const trajectory_follower::InputData & input_data);
-
-  /**
    * @brief Compute the control command for path following with a constant control period.
    * @param input_data Input data required for control calculation.
-   * @return Lateral output control command.
+   * @return What the cycle produced, or the reason the controller cannot run yet.
    */
-  MpcLateralControllerResult run(
+  tl::expected<MpcLateralControllerResult, std::string> run(
     trajectory_follower::InputData const & input_data, const rclcpp::Time & stamp);
 
 private:

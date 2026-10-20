@@ -12,14 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LATERAL_CONTROLLER_BASE_HPP_
-#define AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LATERAL_CONTROLLER_BASE_HPP_
+#ifndef AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LATERAL_CONTROLLER_HPP_
+#define AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LATERAL_CONTROLLER_HPP_
 
 #include "autoware/trajectory_follower_base/control_horizon.hpp"
 #include "autoware/trajectory_follower_base/input_data.hpp"
 #include "autoware/trajectory_follower_base/sync_data.hpp"
 
+#include <rclcpp/time.hpp>
+#include <tl_expected/expected.hpp>
+
 #include "autoware_control_msgs/msg/lateral.hpp"
+
+#include <string>
 
 namespace autoware::motion::control::trajectory_follower
 {
@@ -31,13 +36,22 @@ struct LateralOutput
   LateralSyncData sync_data;
 };
 
-class LateralControllerBase
+/// What a lateral controller has to do, and nothing else. One call takes everything the
+/// controller reads for a cycle and returns everything it produced, so there is no order
+/// a caller has to know.
+class LateralController
 {
 public:
-  virtual bool isReady(const InputData & input_data) = 0;
-  virtual LateralOutput run(InputData const & input_data) = 0;
+  virtual ~LateralController() = default;
+
+  /// Compute the command for one control cycle.
+  /// \param input_data What the vehicle and the planner report for this cycle.
+  /// \param stamp The time of this cycle, read once by the caller.
+  /// \return The command, or the reason the controller cannot produce one yet.
+  virtual tl::expected<LateralOutput, std::string> run(
+    const InputData & input_data, const rclcpp::Time & stamp) = 0;
 };
 
 }  // namespace autoware::motion::control::trajectory_follower
 
-#endif  // AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LATERAL_CONTROLLER_BASE_HPP_
+#endif  // AUTOWARE__TRAJECTORY_FOLLOWER_BASE__LATERAL_CONTROLLER_HPP_

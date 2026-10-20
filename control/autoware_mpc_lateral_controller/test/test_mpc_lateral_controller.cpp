@@ -35,7 +35,7 @@ namespace
 {
 using autoware::motion::control::mpc_lateral_controller::MpcLateralControllerNode;
 using autoware::motion::control::trajectory_follower::InputData;
-using autoware::motion::control::trajectory_follower::LateralControllerBase;
+using autoware::motion::control::trajectory_follower::LateralController;
 using autoware::motion::control::trajectory_follower::LateralOutput;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
@@ -395,7 +395,7 @@ protected:
 
   /// Build the controller behind the base class interface, so that the tests only
   /// exercise the interface the trajectory follower node uses.
-  std::unique_ptr<LateralControllerBase> make_controller(
+  std::unique_ptr<LateralController> make_controller(
     const ControllerOptions & controller_options = ControllerOptions{})
   {
     // Kept alive for the whole test: a controller holds a reference to the node it was
@@ -416,13 +416,22 @@ protected:
   /// This helper repeats an input the test has assembled, and moves the clock forward by
   /// one control period before each cycle. Use it for the record of commands, because the
   /// controller reads the clock to decide which commands are too old to keep.
+  /// Run one cycle at the time the simulated clock now reads. Every test below is about
+  /// the command, so a controller that reports it cannot run is a failure of that test.
+  LateralOutput run_once(LateralController & controller, const InputData & input)
+  {
+    auto result = controller.run(input, node_->get_clock()->now());
+    EXPECT_TRUE(result.has_value()) << "controller could not run: " << result.error();
+    return result ? *result : LateralOutput();
+  }
+
   LateralOutput run_cycles(
-    LateralControllerBase & controller, const InputData & input, const int cycles)
+    LateralController & controller, const InputData & input, const int cycles)
   {
     LateralOutput output;
     for (int cycle = 0; cycle < cycles; ++cycle) {
       advance_clock(ctrl_period);
-      output = controller.run(input);
+      output = run_once(controller, input);
     }
     return output;
   }
@@ -438,13 +447,14 @@ protected:
   /// The vehicle follows the path at 1 m/s and reports its steering as straight ahead. No
   /// test that uses this helper needs it anywhere else.
   LateralOutput follow_path_for_cycles(
-    LateralControllerBase & controller, const Trajectory & path, const int cycles)
+    LateralController & controller, const Trajectory & path, const int cycles)
   {
     LateralOutput output;
     for (int cycle = 0; cycle < cycles; ++cycle) {
       advance_clock(ctrl_period);
       stamp_seconds_ += ctrl_period;
-      output = controller.run(
+      output = run_once(
+        controller,
         Input().following(path).planned_at(1.0).driving_at(1.0).stamped_at(stamp_seconds_));
     }
     return output;
@@ -453,13 +463,13 @@ protected:
   /// Drive a curve at speed until the command stops moving, and report the command reached.
   /// Five cycles are enough for the low pass filters inside the controller to settle. The
   /// clock moves on with each cycle, as it does when the vehicle drives.
-  float settle_on_curve(LateralControllerBase & controller)
+  float settle_on_curve(LateralController & controller)
   {
     const InputData driving = Input().following(left_curve_path()).planned_at(3.0).driving_at(3.0);
     float command = 0.0f;
     for (int cycle = 0; cycle < 5; ++cycle) {
       advance_clock(ctrl_period);
-      command = controller.run(driving).control_cmd.steering_tire_angle;
+      command = run_once(controller, driving).control_cmd.steering_tire_angle;
     }
     return command;
   }
@@ -471,7 +481,7 @@ protected:
   /// cycle is returned as the measured angle of the next, which is the relation that holds
   /// once the steering of a vehicle has reached the commanded angle. Nothing else about a
   /// vehicle is modelled, so the result does not depend on how quickly one responds.
-  float settle_on_arc(LateralControllerBase & controller)
+  float settle_on_arc(LateralController & controller)
   {
     const Trajectory path = arc_path(arc_radius);
     float command = 0.0f;
@@ -479,7 +489,7 @@ protected:
       advance_clock(ctrl_period);
       const InputData driving =
         Input().following(path).planned_at(arc_speed).driving_at(arc_speed).steering_at(command);
-      command = controller.run(driving).control_cmd.steering_tire_angle;
+      command = run_once(controller, driving).control_cmd.steering_tire_angle;
     }
     return command;
   }
@@ -514,9 +524,9 @@ TEST_F(MpcLateralControllerTest, IsNotReadyWithoutTrajectory)
   auto controller = make_controller();
   const auto input = Input().following(Trajectory{}).planned_at(0.0).driving_at(0.0);
 
-  const auto ready = controller->isReady(input);
+  const auto result = controller->run(input, node_->get_clock()->now());
 
-  EXPECT_FALSE(ready);
+  EXPECT_FALSE(result.has_value());
 }
 
 TEST_F(MpcLateralControllerTest, IsNotReadyWithTwoPointTrajectory)
@@ -525,9 +535,9 @@ TEST_F(MpcLateralControllerTest, IsNotReadyWithTwoPointTrajectory)
   const auto two_points = make_trajectory({make_point(0.0, 0.0, 0.0), make_point(10.0, 0.0, 0.0)});
   const auto input = Input().following(two_points).planned_at(1.0).driving_at(1.0);
 
-  const auto ready = controller->isReady(input);
+  const auto result = controller->run(input, node_->get_clock()->now());
 
-  EXPECT_FALSE(ready);
+  EXPECT_FALSE(result.has_value());
 }
 
 TEST_P(MpcLateralControllerModelTest, IsReadyWithStraightTrajectory)
@@ -537,9 +547,9 @@ TEST_P(MpcLateralControllerModelTest, IsReadyWithStraightTrajectory)
   auto controller = make_controller(options);
   const auto input = Input().following(straight_path()).planned_at(1.0).driving_at(1.0);
 
-  const auto ready = controller->isReady(input);
+  const auto result = controller->run(input, node_->get_clock()->now());
 
-  EXPECT_TRUE(ready);
+  EXPECT_TRUE(result.has_value());
 }
 
 TEST_P(MpcLateralControllerModelTest, StraightTrajectoryKeepsSteeringNeutral)
@@ -549,7 +559,7 @@ TEST_P(MpcLateralControllerModelTest, StraightTrajectoryKeepsSteeringNeutral)
   auto controller = make_controller(options);
   const auto input = Input().following(straight_path()).planned_at(1.0).driving_at(1.0);
 
-  const auto output = controller->run(input);
+  const auto output = run_once(*controller, input);
 
   EXPECT_FLOAT_EQ(output.control_cmd.steering_tire_angle, 0.0f);
   EXPECT_FALSE(output.control_cmd_horizon.controls.empty());
@@ -562,7 +572,7 @@ TEST_P(MpcLateralControllerModelTest, LeftCurveCommandsPositiveSteering)
   auto controller = make_controller(options);
   const auto input = Input().following(left_curve_path()).planned_at(1.0).driving_at(1.0);
 
-  const auto output = controller->run(input);
+  const auto output = run_once(*controller, input);
 
   EXPECT_GT(output.control_cmd.steering_tire_angle, 0.0f);
 }
@@ -574,7 +584,7 @@ TEST_P(MpcLateralControllerModelTest, RightCurveCommandsNegativeSteering)
   auto controller = make_controller(options);
   const auto input = Input().following(right_curve_path()).planned_at(1.0).driving_at(1.0);
 
-  const auto output = controller->run(input);
+  const auto output = run_once(*controller, input);
 
   EXPECT_LT(output.control_cmd.steering_tire_angle, 0.0f);
 }
@@ -626,7 +636,7 @@ TEST_F(MpcLateralControllerTest, SteerPredictionTakesTheInitialAngleFromTheComma
   const auto input =
     Input().following(straight_path()).planned_at(1.0).driving_at(1.0).steering_at(0.2);
 
-  const auto output = controller->run(input);
+  const auto output = run_once(*controller, input);
 
   EXPECT_FLOAT_EQ(output.control_cmd.steering_tire_angle, 0.0f);
 }
@@ -645,7 +655,7 @@ TEST_F(MpcLateralControllerTest, PositiveSteeringOffsetTurnsTheCommandNegative)
                        .driving_at(1.0)
                        .with_steering_offset(0.5 * steer_offset_max_update_th);
 
-  const auto output = controller->run(input);
+  const auto output = run_once(*controller, input);
 
   EXPECT_LT(output.control_cmd.steering_tire_angle, 0.0f);
 }
@@ -659,7 +669,7 @@ TEST_F(MpcLateralControllerTest, NegativeSteeringOffsetTurnsTheCommandPositive)
                        .driving_at(1.0)
                        .with_steering_offset(-0.5 * steer_offset_max_update_th);
 
-  const auto output = controller->run(input);
+  const auto output = run_once(*controller, input);
 
   EXPECT_GT(output.control_cmd.steering_tire_angle, 0.0f);
 }
@@ -676,7 +686,7 @@ TEST_F(MpcLateralControllerTest, SteeringOffsetBelowTheUpdateLimitReachesTheComm
                                 .driving_at(1.0)
                                 .with_steering_offset(steer_offset_max_update_th);
   auto at_limit = make_controller();
-  const auto command_at_limit = at_limit->run(input_at_limit).control_cmd.steering_tire_angle;
+  const auto command_at_limit = run_once(*at_limit, input_at_limit).control_cmd.steering_tire_angle;
 
   auto below_limit = make_controller();
   const auto input_below_limit = Input()
@@ -685,7 +695,7 @@ TEST_F(MpcLateralControllerTest, SteeringOffsetBelowTheUpdateLimitReachesTheComm
                                    .driving_at(1.0)
                                    .with_steering_offset(0.5 * steer_offset_max_update_th);
 
-  const auto output = below_limit->run(input_below_limit);
+  const auto output = run_once(*below_limit, input_below_limit);
 
   EXPECT_GT(output.control_cmd.steering_tire_angle, command_at_limit);
 }
@@ -698,7 +708,7 @@ TEST_F(MpcLateralControllerTest, SteeringOffsetPastTheUpdateLimitIsCappedWithinO
                                 .driving_at(1.0)
                                 .with_steering_offset(steer_offset_max_update_th);
   auto at_limit = make_controller();
-  const auto command_at_limit = at_limit->run(input_at_limit).control_cmd.steering_tire_angle;
+  const auto command_at_limit = run_once(*at_limit, input_at_limit).control_cmd.steering_tire_angle;
 
   auto past_limit = make_controller();
   const auto input_past_limit = Input()
@@ -707,7 +717,7 @@ TEST_F(MpcLateralControllerTest, SteeringOffsetPastTheUpdateLimitIsCappedWithinO
                                   .driving_at(1.0)
                                   .with_steering_offset(2.0 * steer_offset_max_update_th);
 
-  const auto output = past_limit->run(input_past_limit);
+  const auto output = run_once(*past_limit, input_past_limit);
 
   EXPECT_FLOAT_EQ(output.control_cmd.steering_tire_angle, command_at_limit);
 }
@@ -722,9 +732,9 @@ TEST_F(MpcLateralControllerTest, SteeringOffsetPastTheUpdateLimitIsAppliedFurthe
                        .planned_at(1.0)
                        .driving_at(1.0)
                        .with_steering_offset(2.0 * steer_offset_max_update_th);
-  const auto first_cycle = controller->run(input).control_cmd.steering_tire_angle;
+  const auto first_cycle = run_once(*controller, input).control_cmd.steering_tire_angle;
 
-  const auto output = controller->run(input);
+  const auto output = run_once(*controller, input);
 
   EXPECT_LT(output.control_cmd.steering_tire_angle, first_cycle);
 }
@@ -742,7 +752,7 @@ TEST_F(MpcLateralControllerTest, SteeringOffsetIsDroppedWhileAutomaticRemovalIsO
                        .driving_at(1.0)
                        .with_steering_offset(2.0 * steer_offset_max_update_th);
 
-  const auto output = controller->run(input);
+  const auto output = run_once(*controller, input);
 
   EXPECT_FLOAT_EQ(output.control_cmd.steering_tire_angle, 0.0f);
 }
@@ -844,7 +854,7 @@ TEST_F(MpcLateralControllerTest, StopStateHoldsTheCommandWhenTheMeasuredAngleIsW
   const auto stopped =
     Input().following(left_curve_path()).planned_at(0.0).driving_at(0.0).steering_at(measured);
 
-  const auto output = controller->run(stopped);
+  const auto output = run_once(*controller, stopped);
 
   EXPECT_FLOAT_EQ(output.control_cmd.steering_tire_angle, settled);
 }
@@ -857,7 +867,7 @@ TEST_F(MpcLateralControllerTest, StopStateIsNotEnteredWhenTheMeasuredAngleIsOuts
   const auto stopped =
     Input().following(left_curve_path()).planned_at(0.0).driving_at(0.0).steering_at(measured);
 
-  const auto output = controller->run(stopped);
+  const auto output = run_once(*controller, stopped);
 
   EXPECT_NE(output.control_cmd.steering_tire_angle, settled);
 }
@@ -872,7 +882,7 @@ TEST_F(MpcLateralControllerTest, StopStateIgnoresTheMeasuredAngleWhileTheGuardIs
   const auto stopped =
     Input().following(left_curve_path()).planned_at(0.0).driving_at(0.0).steering_at(measured);
 
-  const auto output = controller->run(stopped);
+  const auto output = run_once(*controller, stopped);
 
   EXPECT_FLOAT_EQ(output.control_cmd.steering_tire_angle, settled);
 }
@@ -887,7 +897,7 @@ TEST_F(MpcLateralControllerTest, StopStateIsEnteredAtTheEgoSpeedThreshold)
   const auto stopped =
     Input().following(left_curve_path()).planned_at(0.0).driving_at(stop_state_entry_ego_speed);
 
-  const auto output = controller->run(stopped);
+  const auto output = run_once(*controller, stopped);
 
   EXPECT_FLOAT_EQ(output.control_cmd.steering_tire_angle, settled);
 }
@@ -901,7 +911,7 @@ TEST_F(MpcLateralControllerTest, StopStateIsNotEnteredJustAboveTheEgoSpeedThresh
                              .planned_at(0.0)
                              .driving_at(stop_state_entry_ego_speed + speed_step);
 
-  const auto output = controller->run(moving);
+  const auto output = run_once(*controller, moving);
 
   EXPECT_NE(output.control_cmd.steering_tire_angle, settled);
 }
@@ -918,7 +928,7 @@ TEST_F(MpcLateralControllerTest, StopStateIsEnteredJustBelowTheTargetSpeedThresh
                                .planned_at(stop_state_entry_target_speed - speed_step)
                                .driving_at(0.0);
 
-  const auto output = controller->run(stopping);
+  const auto output = run_once(*controller, stopping);
 
   EXPECT_FLOAT_EQ(output.control_cmd.steering_tire_angle, settled);
 }
@@ -930,7 +940,7 @@ TEST_F(MpcLateralControllerTest, StopStateIsNotEnteredAtTheTargetSpeedThreshold)
   const InputData driving =
     Input().following(left_curve_path()).planned_at(stop_state_entry_target_speed).driving_at(0.0);
 
-  const auto output = controller->run(driving);
+  const auto output = run_once(*controller, driving);
 
   EXPECT_NE(output.control_cmd.steering_tire_angle, settled);
 }
@@ -941,11 +951,11 @@ TEST_F(MpcLateralControllerTest, CommandIsResetWhileNotUnderAutowareControl)
 {
   auto controller = make_controller();
   const auto engaged = Input().following(left_curve_path()).planned_at(1.0).driving_at(1.0);
-  const auto steered = controller->run(engaged).control_cmd.steering_tire_angle;
+  const auto steered = run_once(*controller, engaged).control_cmd.steering_tire_angle;
   const InputData disengaged =
     Input().following(left_curve_path()).planned_at(1.0).driving_at(1.0).without_autoware_control();
 
-  const auto output = controller->run(disengaged);
+  const auto output = run_once(*controller, disengaged);
 
   EXPECT_NE(output.control_cmd.steering_tire_angle, steered);
 }
@@ -956,7 +966,7 @@ TEST_F(MpcLateralControllerTest, CommandIsResetWhileTheOperationModeIsNotAutonom
 {
   auto controller = make_controller();
   const auto engaged = Input().following(left_curve_path()).planned_at(1.0).driving_at(1.0);
-  const auto steered = controller->run(engaged).control_cmd.steering_tire_angle;
+  const auto steered = run_once(*controller, engaged).control_cmd.steering_tire_angle;
   const InputData stopped_mode =
     Input()
       .following(left_curve_path())
@@ -964,7 +974,7 @@ TEST_F(MpcLateralControllerTest, CommandIsResetWhileTheOperationModeIsNotAutonom
       .driving_at(1.0)
       .in_operation_mode(autoware_adapi_v1_msgs::msg::OperationModeState::STOP);
 
-  const auto output = controller->run(stopped_mode);
+  const auto output = run_once(*controller, stopped_mode);
 
   EXPECT_NE(output.control_cmd.steering_tire_angle, steered);
 }
@@ -979,14 +989,14 @@ TEST_F(MpcLateralControllerTest, TheCycleAfterControlReturnsDiffersFromAnUninter
     Input().following(left_curve_path()).planned_at(3.0).driving_at(3.0).without_autoware_control();
   auto uninterrupted = make_controller();
   settle_on_curve(*uninterrupted);
-  uninterrupted->run(driving);
-  const auto without_gap = uninterrupted->run(driving).control_cmd.steering_tire_angle;
+  run_once(*uninterrupted, driving);
+  const auto without_gap = run_once(*uninterrupted, driving).control_cmd.steering_tire_angle;
 
   auto interrupted = make_controller();
   settle_on_curve(*interrupted);
-  interrupted->run(disengaged);
+  run_once(*interrupted, disengaged);
 
-  const auto output = interrupted->run(driving);
+  const auto output = run_once(*interrupted, driving);
 
   EXPECT_NE(output.control_cmd.steering_tire_angle, without_gap);
 }
@@ -1002,9 +1012,9 @@ TEST_F(MpcLateralControllerTest, TemporalReferenceModeAcceptsIncreasingTimeFromS
   const auto input =
     Input().following(straight_path_with_time_from_start(true)).planned_at(1.0).driving_at(1.0);
 
-  const auto ready = controller->isReady(input);
+  const auto result = controller->run(input, node_->get_clock()->now());
 
-  EXPECT_TRUE(ready);
+  EXPECT_TRUE(result.has_value());
 }
 
 TEST_F(MpcLateralControllerTest, TemporalReferenceModeRejectsRepeatedTimeFromStart)
@@ -1015,9 +1025,9 @@ TEST_F(MpcLateralControllerTest, TemporalReferenceModeRejectsRepeatedTimeFromSta
   const auto input =
     Input().following(straight_path_with_time_from_start(false)).planned_at(1.0).driving_at(1.0);
 
-  const auto ready = controller->isReady(input);
+  const auto result = controller->run(input, node_->get_clock()->now());
 
-  EXPECT_FALSE(ready);
+  EXPECT_FALSE(result.has_value());
 }
 
 /// A path the vehicle is meant to reverse along carries negative target speeds. The same
@@ -1027,7 +1037,7 @@ TEST_F(MpcLateralControllerTest, BackwardPathReversesTheSteeringDirection)
   auto controller = make_controller();
   const auto input = Input().following(left_curve_path()).planned_at(-1.0).driving_at(-1.0);
 
-  const auto output = controller->run(input);
+  const auto output = run_once(*controller, input);
 
   EXPECT_LT(output.control_cmd.steering_tire_angle, 0.0f);
 }
@@ -1107,7 +1117,7 @@ TEST_F(MpcLateralControllerTest, DISABLED_SteeringOffsetReachesTheCommandButNotT
                        .driving_at(1.0)
                        .with_steering_offset(2.0 * steer_offset_max_update_th);
 
-  const auto output = controller->run(input);
+  const auto output = run_once(*controller, input);
 
   EXPECT_NE(
     output.control_cmd.steering_tire_angle,
@@ -1130,7 +1140,7 @@ TEST_F(MpcLateralControllerTest, DISABLED_StopStateHoldsTheCommandButNotTheHoriz
   settle_on_curve(*controller);
   const auto stopped = Input().following(left_curve_path()).planned_at(0.0).driving_at(0.0);
 
-  const auto output = controller->run(stopped);
+  const auto output = run_once(*controller, stopped);
 
   EXPECT_NE(
     output.control_cmd.steering_tire_angle,
@@ -1219,9 +1229,9 @@ TEST_F(MpcLateralControllerTest, DISABLED_EveryTuningParameterReachesTheCommand)
   const auto input = Input().following(tuning_probe_path()).driving_at(3.0);
 
   advance_clock(ctrl_period);
-  const auto command = controller->run(input).control_cmd.steering_tire_angle;
+  const auto command = run_once(*controller, input).control_cmd.steering_tire_angle;
   const auto command_with_a_longer_step =
-    controller_with_a_longer_step->run(input).control_cmd.steering_tire_angle;
+    run_once(*controller_with_a_longer_step, input).control_cmd.steering_tire_angle;
 
   EXPECT_FLOAT_EQ(command, -0.002773088f);
   EXPECT_FLOAT_EQ(command_with_a_longer_step, -0.0034486512f);

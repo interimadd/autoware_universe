@@ -17,7 +17,7 @@
 
 #include "autoware/pid_longitudinal_controller/pid_longitudinal_controller_node.hpp"
 #include "autoware/trajectory_follower_base/control_horizon.hpp"
-#include "autoware/trajectory_follower_base/lateral_controller_base.hpp"
+#include "autoware/trajectory_follower_base/lateral_controller.hpp"
 #include "autoware/trajectory_follower_base/longitudinal_output.hpp"
 #include "autoware/trajectory_follower_node/visibility_control.hpp"
 #include "autoware_utils/ros/logger_level_configure.hpp"
@@ -77,7 +77,7 @@ private:
   std::shared_ptr<diagnostic_updater::Updater>
     diag_updater_;  // Diagnostic updater for publishing diagnostic data.
 
-  std::shared_ptr<trajectory_follower::LateralControllerBase> lateral_controller_;
+  std::unique_ptr<trajectory_follower::LateralController> lateral_controller_;
 
   // Longitudinal control. The core logic is called directly, without a ROS wrapper in between.
   pid_longitudinal_controller::PidLongitudinalControllerConfig longitudinal_config_{};
