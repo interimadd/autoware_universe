@@ -15,10 +15,10 @@
 #ifndef AUTOWARE__TRAJECTORY_FOLLOWER_NODE__TRAJECTORY_FOLLOWER_HPP_
 #define AUTOWARE__TRAJECTORY_FOLLOWER_NODE__TRAJECTORY_FOLLOWER_HPP_
 
-#include "autoware/pid_longitudinal_controller/pid_longitudinal_controller.hpp"
 #include "autoware/trajectory_follower_base/control_horizon.hpp"
 #include "autoware/trajectory_follower_base/input_data.hpp"
 #include "autoware/trajectory_follower_base/lateral_controller.hpp"
+#include "autoware/trajectory_follower_base/longitudinal_controller.hpp"
 
 #include <autoware_utils/system/stop_watch.hpp>
 #include <rclcpp/time.hpp>
@@ -57,12 +57,9 @@ struct TrajectoryFollowerResult
   /// could not be aligned.
   std::optional<ControlHorizon> control_cmd_horizon{std::nullopt};
 
-  /// What the lateral controller reported, which the caller shows for debugging.
+  /// What the lateral controller reported. It carries the predicted trajectory, which the
+  /// command itself does not hold.
   trajectory_follower::LateralOutput lateral_output;
-
-  /// What the longitudinal controller reported, which the caller publishes and turns into
-  /// a diagnostic.
-  pid_longitudinal_controller::PidLongitudinalControllerResult longitudinal_result;
 
   double lateral_processing_time_ms{0.0};
   double longitudinal_processing_time_ms{0.0};
@@ -89,8 +86,7 @@ public:
   TrajectoryFollower(
     const TrajectoryFollowerConfig & config,
     std::unique_ptr<trajectory_follower::LateralController> lateral_controller,
-    std::unique_ptr<pid_longitudinal_controller::PidLongitudinalController>
-      longitudinal_controller);
+    std::unique_ptr<trajectory_follower::LongitudinalController> longitudinal_controller);
 
   /// Compute the vehicle command for one control cycle.
   /// \param input_data What the vehicle and the planner report for this cycle.
@@ -99,14 +95,10 @@ public:
   tl::expected<TrajectoryFollowerResult, std::string> run(
     const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp);
 
-  /// Apply the longitudinal parameters a caller changed while the follower runs.
-  void setLongitudinalConfig(
-    const pid_longitudinal_controller::PidLongitudinalControllerConfig & config);
-
 private:
   TrajectoryFollowerConfig config_;
   std::unique_ptr<trajectory_follower::LateralController> lateral_controller_;
-  std::unique_ptr<pid_longitudinal_controller::PidLongitudinalController> longitudinal_controller_;
+  std::unique_ptr<trajectory_follower::LongitudinalController> longitudinal_controller_;
 
   /// Steer convergence of the previous cycle, handed to the longitudinal controller.
   bool is_steer_converged_{false};

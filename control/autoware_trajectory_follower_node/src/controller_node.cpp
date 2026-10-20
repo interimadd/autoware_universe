@@ -15,6 +15,7 @@
 #include "autoware/trajectory_follower_node/controller_node.hpp"
 
 #include "autoware/mpc_lateral_controller/mpc_lateral_controller_node.hpp"
+#include "autoware/pid_longitudinal_controller/pid_longitudinal_controller_node.hpp"
 #include "autoware/pure_pursuit/autoware_pure_pursuit_lateral_controller_node.hpp"
 #include "autoware_utils/ros/marker_helper.hpp"
 
@@ -46,6 +47,21 @@ createLateralController(
   }
   throw std::domain_error("[LateralController] invalid algorithm: " + mode);
 }
+
+/// Build the longitudinal controller a mode names. PID is the only one, but it reaches
+/// the follower through the same interface as the lateral algorithms do.
+std::unique_ptr<autoware::motion::control::trajectory_follower::LongitudinalController>
+createLongitudinalController(
+  const std::string & mode, rclcpp::Node & node, diagnostic_updater::Updater & diag_updater)
+{
+  namespace pid_longitudinal_controller = autoware::motion::control::pid_longitudinal_controller;
+
+  if (mode == "pid") {
+    return std::make_unique<pid_longitudinal_controller::PidLongitudinalControllerNode>(
+      node, diag_updater);
+  }
+  throw std::domain_error("[LongitudinalController] invalid algorithm: " + mode);
+}
 }  // namespace
 
 namespace autoware::motion::control::trajectory_follower_node
@@ -54,8 +70,6 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
 : Node("controller", node_options),
   diag_updater_(std::make_shared<diagnostic_updater::Updater>(this))
 {
-  using std::placeholders::_1;
-
   const double ctrl_period = declare_parameter<double>("ctrl_period");
   TrajectoryFollowerConfig trajectory_follower_config;
   trajectory_follower_config.timeout_thr_sec = declare_parameter<double>("timeout_thr_sec");
@@ -69,25 +83,14 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
 
   diag_updater_->setHardwareID("trajectory_follower_node");
   diag_updater_->add("incoming_message_timeout", this, &Controller::check_cyclic_message_timeout);
-  diag_updater_->add("control_state", this, &Controller::check_longitudinal_control_state);
 
   auto lateral_controller = createLateralController(
     declare_parameter<std::string>("lateral_controller_mode"), *this, *diag_updater_);
-
-  // PID is the only longitudinal algorithm, so the mode is validated rather than dispatched on.
-  if (declare_parameter<std::string>("longitudinal_controller_mode") != "pid") {
-    throw std::domain_error("[LongitudinalController] invalid algorithm");
-  }
-  longitudinal_config_ = pid_longitudinal_controller::create_config(*this);
-  auto longitudinal_controller =
-    std::make_unique<pid_longitudinal_controller::PidLongitudinalController>(longitudinal_config_);
-  longitudinal_reporter_ =
-    std::make_unique<pid_longitudinal_controller::PidLongitudinalControllerReporter>(*this);
+  auto longitudinal_controller = createLongitudinalController(
+    declare_parameter<std::string>("longitudinal_controller_mode"), *this, *diag_updater_);
 
   trajectory_follower_ = std::make_unique<TrajectoryFollower>(
     trajectory_follower_config, std::move(lateral_controller), std::move(longitudinal_controller));
-  set_param_res_ =
-    add_on_set_parameters_callback(std::bind(&Controller::onSetParameters, this, _1));
 
   control_cmd_pub_ = create_publisher<autoware_control_msgs::msg::Control>(
     "~/output/control_cmd", rclcpp::QoS{1}.transient_local());
@@ -125,18 +128,6 @@ Controller::Controller(const rclcpp::NodeOptions & node_options)
   published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
 }
 
-rcl_interfaces::msg::SetParametersResult Controller::onSetParameters(
-  const std::vector<rclcpp::Parameter> & parameters)
-{
-  pid_longitudinal_controller::update_config(longitudinal_config_, parameters);
-  trajectory_follower_->setLongitudinalConfig(longitudinal_config_);
-
-  rcl_interfaces::msg::SetParametersResult result;
-  result.successful = true;
-  result.reason = "success";
-  return result;
-}
-
 void Controller::check_cyclic_message_timeout(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
   const auto traj_timestamp = sub_ref_path_.last_taken_data_timestamp();
@@ -155,23 +146,6 @@ void Controller::check_cyclic_message_timeout(diagnostic_updater::DiagnosticStat
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "OK");
     stat.add("trajectory", "OK");
   }
-}
-
-void Controller::check_longitudinal_control_state(
-  diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  using diagnostic_msgs::msg::DiagnosticStatus;
-
-  auto level = DiagnosticStatus::OK;
-  std::string msg = "OK";
-
-  if (longitudinal_control_state_ == pid_longitudinal_controller::ControlState::EMERGENCY) {
-    level = DiagnosticStatus::ERROR;
-    msg = "emergency occurred due to ";
-  }
-
-  stat.add<int32_t>("control_state", static_cast<int32_t>(longitudinal_control_state_));
-  stat.summary(level, msg);
 }
 
 bool Controller::processData(rclcpp::Clock & clock)
@@ -239,11 +213,9 @@ void Controller::callbackTimerControl()
     return;
   }
 
-  // 3. publish what the longitudinal controller reported
+  // 3. publish how long each controller took
   publishProcessingTime(result->lateral_processing_time_ms, pub_processing_time_lat_ms_);
   publishProcessingTime(result->longitudinal_processing_time_ms, pub_processing_time_lon_ms_);
-  longitudinal_control_state_ = result->longitudinal_result.control_state;
-  longitudinal_reporter_->report(result->longitudinal_result);
 
   // 4. update diagnostics
   diag_updater_->force_update();

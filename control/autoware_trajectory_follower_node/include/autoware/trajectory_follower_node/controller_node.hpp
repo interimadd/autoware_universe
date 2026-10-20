@@ -15,7 +15,6 @@
 #ifndef AUTOWARE__TRAJECTORY_FOLLOWER_NODE__CONTROLLER_NODE_HPP_
 #define AUTOWARE__TRAJECTORY_FOLLOWER_NODE__CONTROLLER_NODE_HPP_
 
-#include "autoware/pid_longitudinal_controller/pid_longitudinal_controller_node.hpp"
 #include "autoware/trajectory_follower_base/control_horizon.hpp"
 #include "autoware/trajectory_follower_base/lateral_controller.hpp"
 #include "autoware/trajectory_follower_base/longitudinal_controller.hpp"
@@ -79,14 +78,6 @@ private:
   /// runtime of its own.
   std::unique_ptr<TrajectoryFollower> trajectory_follower_;
 
-  pid_longitudinal_controller::PidLongitudinalControllerConfig longitudinal_config_{};
-  std::unique_ptr<pid_longitudinal_controller::PidLongitudinalControllerReporter>
-    longitudinal_reporter_;
-  rclcpp::Node::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
-  /// latest control state of the longitudinal controller, reported as a diagnostic
-  pid_longitudinal_controller::ControlState longitudinal_control_state_{
-    pid_longitudinal_controller::ControlState::STOPPED};
-
   // Subscribers
   autoware_utils::InterProcessPollingSubscriber<autoware_planning_msgs::msg::Trajectory>
     sub_ref_path_{this, "~/input/reference_trajectory"};
@@ -128,9 +119,6 @@ private:
   void callbackTimerControl();
   bool processData(rclcpp::Clock & clock);
   void check_cyclic_message_timeout(diagnostic_updater::DiagnosticStatusWrapper & stat);
-  void check_longitudinal_control_state(diagnostic_updater::DiagnosticStatusWrapper & stat);
-  rcl_interfaces::msg::SetParametersResult onSetParameters(
-    const std::vector<rclcpp::Parameter> & parameters);
   void publishDebugMarker(
     const trajectory_follower::InputData & input_data,
     const trajectory_follower::LateralOutput & lat_out) const;

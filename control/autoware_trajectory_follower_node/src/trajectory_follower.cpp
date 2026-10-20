@@ -119,17 +119,11 @@ std::optional<ControlHorizon> mergeLatLonHorizon(
 TrajectoryFollower::TrajectoryFollower(
   const TrajectoryFollowerConfig & config,
   std::unique_ptr<trajectory_follower::LateralController> lateral_controller,
-  std::unique_ptr<pid_longitudinal_controller::PidLongitudinalController> longitudinal_controller)
+  std::unique_ptr<trajectory_follower::LongitudinalController> longitudinal_controller)
 : config_(config),
   lateral_controller_(std::move(lateral_controller)),
   longitudinal_controller_(std::move(longitudinal_controller))
 {
-}
-
-void TrajectoryFollower::setLongitudinalConfig(
-  const pid_longitudinal_controller::PidLongitudinalControllerConfig & config)
-{
-  longitudinal_controller_->setConfig(config);
 }
 
 tl::expected<TrajectoryFollowerResult, std::string> TrajectoryFollower::run(
@@ -145,14 +139,18 @@ tl::expected<TrajectoryFollowerResult, std::string> TrajectoryFollower::run(
   stop_watch_.tic("longitudinal");
   // NOTE: the steer convergence of the previous cycle is handed over, as the removed sync() did.
   const auto longitudinal_result =
-    longitudinal_controller_->runDetailed(input_data, stamp, is_steer_converged_);
+    longitudinal_controller_->run(input_data, stamp, is_steer_converged_);
   const double longitudinal_processing_time_ms = stop_watch_.toc("longitudinal");
 
   // Carry the lateral result over to the next cycle of the longitudinal controller.
   is_steer_converged_ = lateral_result->sync_data.is_steer_converged;
 
+  if (!longitudinal_result) {
+    return tl::unexpected(longitudinal_result.error());
+  }
+
   const auto & lateral_output = lateral_result.value();
-  const auto & longitudinal_output = longitudinal_result.output;
+  const auto & longitudinal_output = longitudinal_result.value();
 
   // TODO(Horibe): Think specification. This comes from the old implementation.
   if ((stamp - lateral_output.control_cmd.stamp).seconds() > config_.timeout_thr_sec) {
@@ -167,7 +165,6 @@ tl::expected<TrajectoryFollowerResult, std::string> TrajectoryFollower::run(
   result.control_cmd.lateral = lateral_output.control_cmd;
   result.control_cmd.longitudinal = longitudinal_output.control_cmd;
   result.lateral_output = lateral_output;
-  result.longitudinal_result = longitudinal_result;
   result.lateral_processing_time_ms = lateral_processing_time_ms;
   result.longitudinal_processing_time_ms = longitudinal_processing_time_ms;
 
