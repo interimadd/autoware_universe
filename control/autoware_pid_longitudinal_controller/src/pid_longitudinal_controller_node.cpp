@@ -335,4 +335,57 @@ void PidLongitudinalControllerReporter::report(const PidLongitudinalControllerRe
     pub_virtual_wall_marker_->publish(*result.virtual_wall_marker);
   }
 }
+PidLongitudinalControllerNode::PidLongitudinalControllerNode(
+  rclcpp::Node & node, diagnostic_updater::Updater & diag_updater)
+: config_(create_config(node)), controller_(config_), reporter_(node)
+{
+  diag_updater.add("control_state", this, &PidLongitudinalControllerNode::check_control_state);
+
+  set_param_res_ =
+    node.add_on_set_parameters_callback([this](const std::vector<rclcpp::Parameter> & parameters) {
+      return paramCallback(parameters);
+    });
+}
+
+tl::expected<trajectory_follower::LongitudinalOutput, std::string>
+PidLongitudinalControllerNode::run(
+  const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp,
+  const bool is_steer_converged)
+{
+  const auto result = controller_.runDetailed(input_data, stamp, is_steer_converged);
+
+  control_state_ = result.control_state;
+  reporter_.report(result);
+
+  return result.output;
+}
+
+void PidLongitudinalControllerNode::check_control_state(
+  diagnostic_updater::DiagnosticStatusWrapper & stat)
+{
+  using diagnostic_msgs::msg::DiagnosticStatus;
+
+  auto level = DiagnosticStatus::OK;
+  std::string msg = "OK";
+
+  if (control_state_ == ControlState::EMERGENCY) {
+    level = DiagnosticStatus::ERROR;
+    msg = "emergency occurred due to ";
+  }
+
+  stat.add<int32_t>("control_state", static_cast<int32_t>(control_state_));
+  stat.summary(level, msg);
+}
+
+rcl_interfaces::msg::SetParametersResult PidLongitudinalControllerNode::paramCallback(
+  const std::vector<rclcpp::Parameter> & parameters)
+{
+  update_config(config_, parameters);
+  controller_.setConfig(config_);
+
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = true;
+  result.reason = "success";
+  return result;
+}
 }  // namespace autoware::motion::control::pid_longitudinal_controller

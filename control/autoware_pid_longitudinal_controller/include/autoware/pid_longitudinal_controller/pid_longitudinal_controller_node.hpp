@@ -18,9 +18,13 @@
 #include "autoware/pid_longitudinal_controller/pid_longitudinal_controller.hpp"
 #include "rclcpp/rclcpp.hpp"
 
+#include <diagnostic_updater/diagnostic_updater.hpp>
+
 #include "autoware_internal_debug_msgs/msg/float32_multi_array_stamped.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
 
+#include <memory>
+#include <string>
 #include <vector>
 
 namespace autoware::motion::control::pid_longitudinal_controller
@@ -59,6 +63,35 @@ private:
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
     pub_diagnostic_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_virtual_wall_marker_;
+};
+/// The node side of the longitudinal controller. It declares the parameters, builds the
+/// controller from them, publishes what a cycle produced and reports what it met.
+class PidLongitudinalControllerNode : public trajectory_follower::LongitudinalController
+{
+public:
+  /// \param node Reference to the node used only for the parameter and topic initialization.
+  /// \param diag_updater The updater of the node, which outlives this object and stays
+  ///        its owner. This class only adds a task to it.
+  PidLongitudinalControllerNode(rclcpp::Node & node, diagnostic_updater::Updater & diag_updater);
+
+private:
+  tl::expected<trajectory_follower::LongitudinalOutput, std::string> run(
+    const trajectory_follower::InputData & input_data, const rclcpp::Time & stamp,
+    const bool is_steer_converged) override;
+
+  void check_control_state(diagnostic_updater::DiagnosticStatusWrapper & stat);
+
+  rcl_interfaces::msg::SetParametersResult paramCallback(
+    const std::vector<rclcpp::Parameter> & parameters);
+
+  PidLongitudinalControllerConfig config_;
+  PidLongitudinalController controller_;
+  PidLongitudinalControllerReporter reporter_;
+
+  /// What the last cycle reported, which the diagnostic of the node reads.
+  ControlState control_state_{ControlState::STOPPED};
+
+  rclcpp::Node::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 };
 }  // namespace autoware::motion::control::pid_longitudinal_controller
 
