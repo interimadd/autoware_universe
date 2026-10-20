@@ -21,7 +21,7 @@
 #include "autoware/pid_longitudinal_controller/pid.hpp"
 #include "autoware/pid_longitudinal_controller/smooth_stop.hpp"
 #include "autoware/trajectory_follower_base/input_data.hpp"
-#include "autoware/trajectory_follower_base/longitudinal_output.hpp"
+#include "autoware/trajectory_follower_base/longitudinal_controller.hpp"
 #include "rclcpp/duration.hpp"
 #include "rclcpp/time.hpp"
 
