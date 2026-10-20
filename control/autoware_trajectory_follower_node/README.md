@@ -16,6 +16,9 @@ package autoware_trajectory_follower_base {
 abstract class LateralController {
 virtual run(InputData, stamp)
 }
+abstract class LongitudinalController {
+virtual run(InputData, stamp, is_steer_converged)
+}
 
 struct InputData {
 trajectory
@@ -39,8 +42,8 @@ run(InputData, stamp) override
 }
 }
 package pid_longitudinal_controller {
-class PidLongitudinalController {
-run(InputData, stamp, is_steer_converged)
+class PidLongitudinalControllerNode {
+run(InputData, stamp, is_steer_converged) override
 }
 }
 
@@ -60,19 +63,22 @@ createInputData(): InputData
 
 MpcLateralControllerNode --|> LateralController
 PurePursuitLateralControllerNode --|> LateralController
+PidLongitudinalControllerNode --|> LongitudinalController
 
-LateralSyncData --> PidLongitudinalController
+LateralSyncData --> LongitudinalController
 InputData ..> LateralController
-InputData ..> PidLongitudinalController
+InputData ..> LongitudinalController
 
 LateralController --o TrajectoryFollower
-PidLongitudinalController --o TrajectoryFollower
+LongitudinalController --o TrajectoryFollower
 TrajectoryFollower --o Controller
 InputData ..> Controller
 @enduml
 ```
 
 `TrajectoryFollower` holds the control logic and both controllers. It reads no clock, no parameter and no topic, so a caller outside ROS 2 can drive it in a loop and evaluate a controller without starting an executor.
+
+Each algorithm comes in two classes behind the same interface. The core class computes the command and publishes nothing. The `*Node` class holds the core, declares the parameters of the algorithm, publishes its debug topics and reports its diagnostic. `Controller` hands the follower the `*Node` classes, and an evaluation outside ROS 2 hands it the cores.
 
 ```cpp
 const auto result = trajectory_follower.run(input_data, stamp);

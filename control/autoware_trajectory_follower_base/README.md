@@ -8,8 +8,8 @@ This is the design document for the `trajectory_follower` package.
 <!-- Things to consider:
     - Why did we implement this feature? -->
 
-This package provides the lateral controller interface used by the node of the `autoware_trajectory_follower_node` package, and the data types shared between that node and the controllers.
-We can implement a detailed lateral controller by deriving the lateral interface.
+This package provides the two controller interfaces used by the node of the `autoware_trajectory_follower_node` package, and the data types shared between that node and the controllers.
+We can implement a detailed controller by deriving the interface of its direction.
 
 ## Design
 
@@ -19,10 +19,18 @@ Each lateral algorithm inherits from `LateralController` and implements one func
 tl::expected<LateralOutput, std::string> run(const InputData & input_data, const rclcpp::Time & stamp);
 ```
 
+Each longitudinal algorithm inherits from `LongitudinalController` and implements one function.
+
+```cpp
+tl::expected<LongitudinalOutput, std::string> run(const InputData & input_data, const rclcpp::Time & stamp, const bool is_steer_converged);
+```
+
 One call takes everything the controller reads for a cycle and returns everything it produced, so there is no order a caller has to know.
 A controller that cannot produce a command yet returns the reason on the error side, and the node logs it.
 
-The longitudinal controller has no interface. The node calls [autoware_pid_longitudinal_controller](../autoware_pid_longitudinal_controller/README.md) directly, because PID is its only implementation. It hands the controller the steer convergence reported by the lateral controller in the previous cycle.
+`is_steer_converged` is what the lateral controller reported in the previous cycle. It is not input data, so it stays an argument of its own.
+
+Two classes implement each interface. The core class computes the command and depends on no `rclcpp::Node`. The `*Node` class holds the core and adds what only a node can do, which is the parameters, the debug topics and the diagnostic of that algorithm.
 
 See [the Design of Trajectory Follower Nodes](../autoware_trajectory_follower_node/README.md#Design) for how these functions work in the node.
 
