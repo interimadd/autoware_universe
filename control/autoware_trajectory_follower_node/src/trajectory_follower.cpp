@@ -15,6 +15,7 @@
 #include "autoware/trajectory_follower_node/trajectory_follower.hpp"
 
 #include <cmath>
+#include <cstdint>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -83,10 +84,12 @@ std::optional<ControlHorizon> mergeLatLonHorizon(
 
   // If both horizons have multiple controls, align the time steps and zero-order hold the controls.
   // calculate greatest common divisor of time steps
+  // NOTE: int64_t is needed, not int. A time step of 100 ms times the precision below is
+  // 1e11, which does not fit in an int, and the conversion is undefined.
   const auto gcd_double = [](const double a, const double b) {
     const double precision = 1e9;
-    const int int_a = static_cast<int>(round(a * precision));
-    const int int_b = static_cast<int>(round(b * precision));
+    const auto int_a = static_cast<std::int64_t>(std::round(a * precision));
+    const auto int_b = static_cast<std::int64_t>(std::round(b * precision));
     return static_cast<double>(std::gcd(int_a, int_b)) / precision;
   };
   const double time_step_ms =
