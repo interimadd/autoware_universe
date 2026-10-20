@@ -19,10 +19,10 @@
 #include "autoware/trajectory_follower_base/control_horizon.hpp"
 #include "autoware/trajectory_follower_base/lateral_controller.hpp"
 #include "autoware/trajectory_follower_base/longitudinal_output.hpp"
+#include "autoware/trajectory_follower_node/trajectory_follower.hpp"
 #include "autoware/trajectory_follower_node/visibility_control.hpp"
 #include "autoware_utils/ros/logger_level_configure.hpp"
 #include "autoware_utils/ros/polling_subscriber.hpp"
-#include "autoware_utils/system/stop_watch.hpp"
 #include "autoware_vehicle_info_utils/vehicle_info_utils.hpp"
 #include "rclcpp/rclcpp.hpp"
 
@@ -56,7 +56,6 @@ namespace trajectory_follower_node
 using autoware_adapi_v1_msgs::msg::OperationModeState;
 using autoware_control_msgs::msg::ControlHorizon;
 using autoware_internal_debug_msgs::msg::Float64Stamped;
-using autoware_utils::StopWatch;
 
 namespace trajectory_follower = ::autoware::motion::control::trajectory_follower;
 
@@ -70,23 +69,20 @@ public:
 
 private:
   rclcpp::TimerBase::SharedPtr timer_control_;
-  double timeout_thr_sec_;
   double cyclic_message_timeout_thr_sec_;
   bool enable_control_cmd_horizon_pub_{false};
 
   std::shared_ptr<diagnostic_updater::Updater>
     diag_updater_;  // Diagnostic updater for publishing diagnostic data.
 
-  std::unique_ptr<trajectory_follower::LateralController> lateral_controller_;
+  /// The control logic of this node, which holds the two controllers and needs no ROS 2
+  /// runtime of its own.
+  std::unique_ptr<TrajectoryFollower> trajectory_follower_;
 
-  // Longitudinal control. The core logic is called directly, without a ROS wrapper in between.
   pid_longitudinal_controller::PidLongitudinalControllerConfig longitudinal_config_{};
-  std::unique_ptr<pid_longitudinal_controller::PidLongitudinalController> longitudinal_controller_;
   std::unique_ptr<pid_longitudinal_controller::PidLongitudinalControllerReporter>
     longitudinal_reporter_;
   rclcpp::Node::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
-  /// steer convergence of the previous cycle, handed to the longitudinal controller
-  bool is_steer_converged_{false};
   /// latest control state of the longitudinal controller, reported as a diagnostic
   pid_longitudinal_controller::ControlState longitudinal_control_state_{
     pid_longitudinal_controller::ControlState::STOPPED};
@@ -130,7 +126,6 @@ private:
   std::optional<trajectory_follower::InputData> createInputData(rclcpp::Clock & clock);
   void callbackTimerControl();
   bool processData(rclcpp::Clock & clock);
-  bool isTimeOut(const LongitudinalOutput & lon_out, const LateralOutput & lat_out);
   void check_cyclic_message_timeout(diagnostic_updater::DiagnosticStatusWrapper & stat);
   void check_longitudinal_control_state(diagnostic_updater::DiagnosticStatusWrapper & stat);
   rcl_interfaces::msg::SetParametersResult onSetParameters(
@@ -138,27 +133,12 @@ private:
   void publishDebugMarker(
     const trajectory_follower::InputData & input_data,
     const trajectory_follower::LateralOutput & lat_out) const;
-  /**
-   * @brief merge lateral and longitudinal horizons
-   * @details If one of the commands has only one control, repeat the control to match the other
-   *          horizon. If each horizon has different time intervals, resample them to match the size
-   *          with the greatest common divisor.
-   * @param lateral_horizon lateral horizon
-   * @param longitudinal_horizon longitudinal horizon
-   * @param stamp stamp
-   * @return merged control horizon
-   */
-  static std::optional<ControlHorizon> mergeLatLonHorizon(
-    const LateralHorizon & lateral_horizon, const LongitudinalHorizon & longitudinal_horizon,
-    const rclcpp::Time & stamp);
-
   std::unique_ptr<autoware_utils::LoggerLevelConfigure> logger_configure_;
 
   std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
 
   void publishProcessingTime(
     const double t_ms, const rclcpp::Publisher<Float64Stamped>::SharedPtr pub);
-  StopWatch<std::chrono::milliseconds> stop_watch_;
 
   static constexpr double logger_throttle_interval = 5000;
 };
