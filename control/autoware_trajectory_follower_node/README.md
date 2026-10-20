@@ -45,10 +45,14 @@ run(InputData, stamp, is_steer_converged)
 }
 
 package autoware_trajectory_follower_node {
-class Controller {
-longitudinal_controller_
+class TrajectoryFollower {
 lateral_controller_
+longitudinal_controller_
 is_steer_converged_
+run(InputData, stamp): TrajectoryFollowerResult
+}
+class Controller {
+trajectory_follower_
 onTimer()
 createInputData(): InputData
 }
@@ -61,10 +65,17 @@ LateralSyncData --> PidLongitudinalController
 InputData ..> LateralController
 InputData ..> PidLongitudinalController
 
-LateralController --o Controller
-PidLongitudinalController --o Controller
+LateralController --o TrajectoryFollower
+PidLongitudinalController --o TrajectoryFollower
+TrajectoryFollower --o Controller
 InputData ..> Controller
 @enduml
+```
+
+`TrajectoryFollower` holds the control logic and both controllers. It reads no clock, no parameter and no topic, so a caller outside ROS 2 can drive it in a loop and evaluate a controller without starting an executor.
+
+```cpp
+const auto result = trajectory_follower.run(input_data, stamp);
 ```
 
 The process flow of `Controller` class is as follows.
@@ -76,19 +87,17 @@ if (!input_data) {
   return;
 }
 
-// 2. run controllers
-const auto lat_result = lateral_controller_->run(*input_data, stamp);
-if (!lat_result) {
+// 2. run the control logic
+const auto result = trajectory_follower_->run(*input_data, stamp);
+if (!result) {
   return;  // the error side says why, and the node logs it
 }
-const auto & lat_out = lat_result.value();
-const auto lon_result = longitudinal_controller_->run(*input_data, stamp, is_steer_converged_);
 
-// 3. carry the lateral result over to the next cycle of the longitudinal controller
-is_steer_converged_ = lat_out.sync_data.is_steer_converged;
+// 3. publish what the longitudinal controller reported
+longitudinal_reporter_->report(result->longitudinal_result);
 
-// 5. publish control command
-control_cmd_pub_->publish(out);
+// 4. publish control command
+control_cmd_pub_->publish(result->control_cmd);
 ```
 
 Giving the longitudinal controller information about steer convergence allows it to control steer when stopped if following parameters are `true`
