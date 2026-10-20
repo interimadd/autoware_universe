@@ -9,16 +9,20 @@ This is the design document for the `trajectory_follower` package.
     - Why did we implement this feature? -->
 
 This package provides the lateral controller interface used by the node of the `autoware_trajectory_follower_node` package, and the data types shared between that node and the controllers.
-We can implement a detailed lateral controller by deriving the lateral base interface.
+We can implement a detailed lateral controller by deriving the lateral interface.
 
 ## Design
 
-Each lateral algorithm inherits from `LateralControllerBase` to implement the following functions.
+Each lateral algorithm inherits from `LateralController` and implements one function.
 
-- `isReady()`: Check if the control is ready to compute.
-- `run()`: Compute control commands and return to [Trajectory Follower Nodes](../autoware_trajectory_follower_node/README.md). This must be implemented by inherited algorithms.
+```cpp
+tl::expected<LateralOutput, std::string> run(const InputData & input_data, const rclcpp::Time & stamp);
+```
 
-The longitudinal controller has no base interface. The node calls [autoware_pid_longitudinal_controller](../autoware_pid_longitudinal_controller/README.md) directly, and hands it the steer convergence reported by the lateral controller in the previous cycle.
+One call takes everything the controller reads for a cycle and returns everything it produced, so there is no order a caller has to know.
+A controller that cannot produce a command yet returns the reason on the error side, and the node logs it.
+
+The longitudinal controller has no interface. The node calls [autoware_pid_longitudinal_controller](../autoware_pid_longitudinal_controller/README.md) directly, because PID is its only implementation. It hands the controller the steer convergence reported by the lateral controller in the previous cycle.
 
 See [the Design of Trajectory Follower Nodes](../autoware_trajectory_follower_node/README.md#Design) for how these functions work in the node.
 

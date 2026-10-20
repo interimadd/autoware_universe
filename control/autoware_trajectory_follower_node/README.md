@@ -6,16 +6,15 @@ Generate control commands to follow a given Trajectory.
 
 ## Design
 
-This is a node of the functionalities implemented in the lateral controller class derived from the [autoware_trajectory_follower_base](../autoware_trajectory_follower_base/README.md#trajectory-follower) package, and in the longitudinal controller class of the [autoware_pid_longitudinal_controller](../autoware_pid_longitudinal_controller/README.md) package. It has instances of those functionalities, gives them input data to perform calculations, and publishes control commands.
+This is a node of the functionalities implemented in the lateral controller class derived from the [autoware_trajectory_follower_base](../autoware_trajectory_follower_base/README.md#trajectory-follower) interface, and in the longitudinal controller class of the [autoware_pid_longitudinal_controller](../autoware_pid_longitudinal_controller/README.md) package. It has instances of those functionalities, gives them input data to perform calculations, and publishes control commands.
 
 By default, the controller instance with the `Controller` class as follows is used.
 
 ```plantuml
 @startuml
 package autoware_trajectory_follower_base {
-abstract class LateralControllerBase {
-virtual isReady(InputData)
-virtual run(InputData)
+abstract class LateralController {
+virtual run(InputData, stamp)
 }
 
 struct InputData {
@@ -30,15 +29,13 @@ is_steer_converged
 }
 
 package autoware_mpc_lateral_controller {
-class MPCLateralController {
-isReady(InputData) override
-run(InputData) override
+class MpcLateralControllerNode {
+run(InputData, stamp) override
 }
 }
 package pure_pursuit {
-class PurePursuitLateralController {
-isReady(InputData) override
-run(InputData) override
+class PurePursuitLateralControllerNode {
+run(InputData, stamp) override
 }
 }
 package pid_longitudinal_controller {
@@ -57,14 +54,14 @@ createInputData(): InputData
 }
 }
 
-MPCLateralController --|> LateralControllerBase
-PurePursuitLateralController --|> LateralControllerBase
+MpcLateralControllerNode --|> LateralController
+PurePursuitLateralControllerNode --|> LateralController
 
 LateralSyncData --> PidLongitudinalController
-InputData ..> LateralControllerBase
+InputData ..> LateralController
 InputData ..> PidLongitudinalController
 
-LateralControllerBase --o Controller
+LateralController --o Controller
 PidLongitudinalController --o Controller
 InputData ..> Controller
 @enduml
@@ -79,16 +76,15 @@ if (!input_data) {
   return;
 }
 
-// 2. check if the lateral controller is ready
-if (!lateral_controller_->isReady(*input_data)) {
-  return;
+// 2. run controllers
+const auto lat_result = lateral_controller_->run(*input_data, stamp);
+if (!lat_result) {
+  return;  // the error side says why, and the node logs it
 }
-
-// 3. run controllers
-const auto lat_out = lateral_controller_->run(*input_data);
+const auto & lat_out = lat_result.value();
 const auto lon_result = longitudinal_controller_->run(*input_data, stamp, is_steer_converged_);
 
-// 4. carry the lateral result over to the next cycle of the longitudinal controller
+// 3. carry the lateral result over to the next cycle of the longitudinal controller
 is_steer_converged_ = lat_out.sync_data.is_steer_converged;
 
 // 5. publish control command
